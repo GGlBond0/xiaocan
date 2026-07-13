@@ -184,3 +184,31 @@ CREATE TABLE `grab_history` (
 -- ALTER TABLE `user`
 --   DROP COLUMN `xc_login_update_time`, DROP COLUMN `xc_nami`,
 --   DROP COLUMN `xc_session_id`, DROP COLUMN `xc_sivir`, DROP COLUMN `xc_user_id`;
+
+-- ============================
+-- 2026年7月14日 抢单登录态多组化
+-- ============================
+
+-- 抢单登录态表（一个系统用户可存多组小蚕登录态）
+DROP TABLE IF EXISTS `grab_login_state`;
+CREATE TABLE `grab_login_state` (
+    `id`            INT NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+    `user_id`       INT NOT NULL COMMENT '系统用户ID',
+    `name`          VARCHAR(64) NOT NULL COMMENT '别名,如 主账号/小号',
+    `xc_user_id`    INT NULL DEFAULT NULL COMMENT '小蚕用户id(X-Vayne/JWT.UserId)',
+    `xc_sivir`      VARCHAR(800) NULL DEFAULT NULL COMMENT '登录JWT(X-Sivir)',
+    `xc_session_id` VARCHAR(64) NULL DEFAULT NULL COMMENT '会话id(X-Session-Id)',
+    `xc_nami`       VARCHAR(32) NULL DEFAULT NULL COMMENT 'X-Nami(可选,默认随机)',
+    `silk_id`       INT NULL DEFAULT 0 COMMENT 'silk_id(请求体+silk_id=X-Teemo)',
+    `expire_at`     DATETIME NULL DEFAULT NULL COMMENT 'JWT过期时间(解析exp)',
+    `create_time`   DATETIME NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    `update_time`   DATETIME NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    `deleted`       TINYINT(1) NOT NULL DEFAULT 0 COMMENT '逻辑删除',
+    PRIMARY KEY (`id`),
+    INDEX `idx_user_id` (`user_id`)
+) ENGINE = InnoDB CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci COMMENT = '小蚕抢单登录态(多组)';
+
+-- grab_config 增加登录态绑定
+ALTER TABLE `grab_config`
+    ADD COLUMN `login_state_id` INT NULL DEFAULT NULL COMMENT '绑定的登录态id(grab_login_state.id)' AFTER `user_id`;
+

@@ -4,9 +4,9 @@ import com.baomidou.mybatisplus.extension.service.IService;
 import io.github.xiaocan.model.dto.GrabConfigDTO;
 import io.github.xiaocan.model.dto.GrabLoginStateDTO;
 import io.github.xiaocan.model.entity.GrabConfigEntity;
-import io.github.xiaocan.model.entity.GrabHistoryEntity;
 import io.github.xiaocan.model.vo.GrabConfigVO;
 import io.github.xiaocan.model.vo.GrabHistoryVO;
+import io.github.xiaocan.model.vo.GrabLoginStateVO;
 import io.github.xiaocan.model.vo.GrabResultVO;
 
 import java.util.List;
@@ -14,14 +14,19 @@ import java.util.List;
 public interface GrabService extends IService<GrabConfigEntity> {
 
     /**
-     * 录入/更新登录态（解析抓包 header 原文）
+     * 新增/更新登录态（解析抓包 header 原文）。id 为空则新增，否则更新。
      */
-    GrabResultVO saveLoginState(GrabLoginStateDTO dto);
+    GrabResultVO saveLoginState(GrabLoginStateDTO dto, Integer id);
 
     /**
-     * 查询当前登录态摘要
+     * 当前用户登录态列表（多组）
      */
-    GrabResultVO getLoginState();
+    List<GrabLoginStateVO> listLoginState();
+
+    /**
+     * 删除登录态
+     */
+    void deleteLoginState(Integer id);
 
     /**
      * 保存/更新抢单配置
@@ -50,9 +55,6 @@ public interface GrabService extends IService<GrabConfigEntity> {
 
     /**
      * 执行一次抢单（手动/定时共用），含重试。返回最终结果。
-     *
-     * @param config      抢单配置
-     * @param triggerType MANUAL/CRON/ONESHOT
      */
     GrabResultVO doGrab(GrabConfigEntity config, String triggerType);
 

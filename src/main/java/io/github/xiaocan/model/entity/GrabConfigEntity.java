@@ -23,6 +23,10 @@ public class GrabConfigEntity {
      */
     private Integer userId;
     /**
+     * 绑定的登录态id（grab_login_state.id）
+     */
+    private Integer loginStateId;
+    /**
      * 位置信息ID（为空则用入参经纬度）
      */
     private Long locationId;

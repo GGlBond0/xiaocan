@@ -60,3 +60,23 @@
 ## 待确认（实现时如遇阻塞再问）
 - 抓包重放是否需要代理（直接重放可能暴露本机 IP，仅做一次性验证）。
 - 前端仓库名/路径（xiaocan-front 是否本地可访问）。
+
+## 变更：登录态多组化 + 配置级切换用户（2026-07-14）
+
+需求：登录态允许多组，抢单配置级切换用户。
+
+后端：
+- [x] 新表 `grab_login_state`（id/user_id/name/xc_user_id/xc_sivir/xc_session_id/xc_nami/silk_id/expire_at），一个系统用户可多组。DDL 已在生产执行。
+- [x] `grab_config` 加 `login_state_id` 列，抢单按此取登录态。
+- [x] `GrabLoginStateEntity` + `GrabLoginStateMapper`。
+- [x] `GrabAuth` 改从 `GrabLoginStateEntity` 构造，含 `silkId`；`XiaochanHttp.grabPromotionQuota` 去掉单独 silkId 参数，从 auth 取。
+- [x] `GrabService` 登录态改多组 CRUD（saveLoginState 带可选 id / listLoginState / deleteLoginState），`doGrab` 按 `config.loginStateId` 取登录态 + JWT 过期校验。
+- [x] `GrabJwtExpireTask` 改扫 `grab_login_state` 表。
+- [x] `GrabController` 登录态接口：`POST /login-state?id=`、`GET /login-state/list`、`DELETE /login-state/{id}`。
+- [x] 解析 silk_id：优先抓包 JSON body 的 silk_id，其次 X-Teemo（抓包 X-Teemo=silk_id）。
+- [x] 编译 + 部署 + 端到端验证：录入登录态 id=1（主账号，silk_id=222559356 正确），配置绑定后手动抢 promotion 118226923 → code=0。
+
+前端：
+- [x] `GrabLoginView` 改多组列表管理（新增/更新/删除，状态标签 有效/即将过期/已过期）。
+- [x] `GrabConfigView` 加登录态下拉选择器（绑定到配置），表格加登录态列。
+- [x] 构建通过 + 部署。

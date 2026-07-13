@@ -6,6 +6,7 @@ import io.github.xiaocan.model.dto.GrabLoginStateDTO;
 import io.github.xiaocan.model.enums.MonitorConfigStatusEnums;
 import io.github.xiaocan.model.vo.GrabConfigVO;
 import io.github.xiaocan.model.vo.GrabHistoryVO;
+import io.github.xiaocan.model.vo.GrabLoginStateVO;
 import io.github.xiaocan.model.vo.GrabResultVO;
 import io.github.xiaocan.service.GrabService;
 import jakarta.annotation.Resource;
@@ -27,19 +28,29 @@ public class GrabController {
     private GrabService grabService;
 
     /**
-     * 录入/更新小蚕登录态（粘贴抓包 header 原文）
+     * 新增/更新小蚕登录态（粘贴抓包 header 原文）。id 为空则新增。
      */
     @PostMapping("/login-state")
-    public BaseResult<GrabResultVO> saveLoginState(@Valid @RequestBody GrabLoginStateDTO dto) {
-        return BaseResult.ok(grabService.saveLoginState(dto));
+    public BaseResult<GrabResultVO> saveLoginState(@Valid @RequestBody GrabLoginStateDTO dto,
+                                                   @RequestParam(required = false) Integer id) {
+        return BaseResult.ok(grabService.saveLoginState(dto, id));
     }
 
     /**
-     * 查询登录态
+     * 登录态列表（多组）
      */
-    @GetMapping("/login-state")
-    public BaseResult<GrabResultVO> getLoginState() {
-        return BaseResult.ok(grabService.getLoginState());
+    @GetMapping("/login-state/list")
+    public BaseResult<List<GrabLoginStateVO>> listLoginState() {
+        return BaseResult.ok(grabService.listLoginState());
+    }
+
+    /**
+     * 删除登录态
+     */
+    @DeleteMapping("/login-state/{id}")
+    public BaseResult<Void> deleteLoginState(@PathVariable Integer id) {
+        grabService.deleteLoginState(id);
+        return BaseResult.ok();
     }
 
     /**

@@ -11,6 +11,7 @@ import java.time.LocalDateTime;
 @Data
 public class GrabConfigVO {
     private Integer id;
+    private Integer loginStateId;
     private Long locationId;
     private Integer promotionId;
     private Integer silkId;

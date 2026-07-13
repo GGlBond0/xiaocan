@@ -13,6 +13,11 @@ import java.time.LocalDateTime;
 public class GrabConfigDTO {
     private Integer id;
     /**
+     * 绑定的登录态id（grab_login_state.id）
+     */
+    @NotNull
+    private Integer loginStateId;
+    /**
      * 位置信息ID（用于取经纬度/city_code，与监控配置一致）
      */
     @NotNull

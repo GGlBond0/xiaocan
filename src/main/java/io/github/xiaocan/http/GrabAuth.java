@@ -1,12 +1,12 @@
 package io.github.xiaocan.http;
 
-import io.github.xiaocan.model.entity.UserEntity;
+import io.github.xiaocan.model.entity.GrabLoginStateEntity;
 import lombok.Builder;
 import lombok.Data;
 
 /**
- * 抢单登录态（从 UserEntity 映射）。
- * X-Nami 为空时由 {@link XiaochanHttp#getNami()} 随机生成。
+ * 抢单登录态。X-Nami 为空时由 {@link XiaochanHttp#getNami()} 随机生成。
+ * x-Teemo = silk_id，X-Vayne = 用户id（见抓包 favorites1.json）。
  */
 @Data
 @Builder
@@ -16,7 +16,7 @@ public class GrabAuth {
      */
     private String sivir;
     /**
-     * 小蚕用户id（X-Teemo / X-Vayne）
+     * 小蚕用户id（X-Vayne / JWT.UserId）
      */
     private Integer userId;
     /**
@@ -27,16 +27,21 @@ public class GrabAuth {
      * X-Nami（可选，默认随机）
      */
     private String nami;
+    /**
+     * silk_id（X-Teemo / 请求体 silk_id）
+     */
+    private Integer silkId;
 
-    public static GrabAuth from(UserEntity user) {
-        if (user == null) {
+    public static GrabAuth from(GrabLoginStateEntity state) {
+        if (state == null) {
             return null;
         }
         return GrabAuth.builder()
-                .sivir(user.getXcSivir())
-                .userId(user.getXcUserId())
-                .sessionId(user.getXcSessionId())
-                .nami(user.getXcNami())
+                .sivir(state.getXcSivir())
+                .userId(state.getXcUserId())
+                .sessionId(state.getXcSessionId())
+                .nami(state.getXcNami())
+                .silkId(state.getSilkId())
                 .build();
     }
 
@@ -49,3 +54,4 @@ public class GrabAuth {
                 && sessionId != null && !sessionId.isEmpty();
     }
 }
+

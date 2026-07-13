@@ -41,48 +41,40 @@
 
 ## 2. 数据模型变更
 
-### 2.1 `user` 表扩展（增量 ALTER，追加到 ddl.sql）
+### 2.1 登录态表 `grab_login_state`（多组，替代 user 表存登录态）
+一个系统用户可存多组小蚕登录态，每组含独立 JWT/silk_id/别名，抢单配置绑定其中一组。
 ```sql
-ALTER TABLE `user`
-  ADD COLUMN `xc_user_id`    INT          NULL COMMENT '小蚕用户id(X-Teemo/Vayne)',
-  ADD COLUMN `xc_sivir`      VARCHAR(800) NULL COMMENT '登录JWT(X-Sivir)',
-  ADD COLUMN `xc_session_id` VARCHAR(64) NULL COMMENT '会话id(X-Session-Id)',
-  ADD COLUMN `xc_nami`       VARCHAR(32) NULL COMMENT 'X-Nami(可选,随机失效时回退)',
-  ADD COLUMN `xc_login_update_time` DATETIME NULL COMMENT '登录态录入时间';
-```
-- `UserEntity` 增加对应字段（MyBatis-Plus 自动映射）。
-- 不加唯一约束：登录态随用户重录覆盖。
-
-### 2.2 新表 `grab_config`
-```sql
-CREATE TABLE `grab_config` (
+CREATE TABLE `grab_login_state` (
   `id`            INT NOT NULL AUTO_INCREMENT,
-  `user_id`       INT NOT NULL,
-  `location_id`   BIGINT NULL COMMENT '位置(提供lat/lng/city_code)',
-  `promotion_id`  INT NOT NULL COMMENT '要抢的活动id(当天有效)',
-  `silk_id`       INT NULL DEFAULT 0 COMMENT 'silk_id(抓包值)',
-  `store_platform` INT NOT NULL DEFAULT 1,
-  `if_advance_order` TINYINT NOT NULL DEFAULT 0,
-  `cron`          VARCHAR(50) NULL COMMENT '定时抢单cron(6位含秒),空=仅手动/一次性',
-  `execute_at`    DATETIME(3) NULL COMMENT '一次性精确执行时间,命中后停用',
-  `lead_ms`       INT NOT NULL DEFAULT 0 COMMENT '提前量(ms)',
-  `enable_retry`  TINYINT NOT NULL DEFAULT 1 COMMENT 'code4是否重试',
-  `max_retry`     INT NOT NULL DEFAULT 3,
-  `retry_interval_ms` INT NOT NULL DEFAULT 500,
-  `status`        VARCHAR(20) NOT NULL DEFAULT 'ENABLE',
-  `last_result`   VARCHAR(200) NULL,
-  `last_grab_time` DATETIME NULL,
-  `promotion_order_id` BIGINT NULL,
+  `user_id`       INT NOT NULL COMMENT '系统用户id',
+  `name`          VARCHAR(64) NOT NULL COMMENT '别名,如 主账号/小号',
+  `xc_user_id`    INT NULL COMMENT '小蚕用户id(X-Vayne/JWT.UserId)',
+  `xc_sivir`      VARCHAR(800) NULL COMMENT '登录JWT(X-Sivir)',
+  `xc_session_id` VARCHAR(64) NULL COMMENT '会话id(X-Session-Id)',
+  `xc_nami`       VARCHAR(32) NULL COMMENT 'X-Nami(可选,默认随机)',
+  `silk_id`       INT NULL DEFAULT 0 COMMENT 'silk_id(请求体+silk_id=X-Teemo)',
+  `expire_at`     DATETIME NULL COMMENT 'JWT过期时间(解析exp)',
   `create_time`   DATETIME DEFAULT CURRENT_TIMESTAMP,
   `update_time`   DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  `deleted`       TINYINT NOT NULL DEFAULT 0,
+  `deleted`       TINYINT(1) NOT NULL DEFAULT 0,
   PRIMARY KEY(`id`),
-  INDEX `idx_user_id`(`user_id`),
-  INDEX `idx_status`(`status`)
-) ENGINE=InnoDB COMMENT='抢单配置';
+  INDEX `idx_user_id`(`user_id`)
+) ENGINE=InnoDB COMMENT='小蚕抢单登录态(多组)';
+```
+- 录入时解析抓包 header：`X-Sivir/X-Session-Id/X-Nami/X-Vayne`，并从 body 或 `X-Teemo` 取 `silk_id`（抓包里 X-Teemo=silk_id）。解析 JWT `exp` 存 `expire_at`。
+- 原 `user` 表 xc* 字段保留（旧数据兼容），但新逻辑全部走 `grab_login_state`。可后续废弃。
+
+### 2.2 新表 `grab_config`（加 `login_state_id`）
+```sql
+ALTER TABLE `grab_config`
+  ADD COLUMN `login_state_id` INT NULL COMMENT '绑定的登录态id(grab_login_state.id)' AFTER `user_id`;
+```
+```sql
+-- grab_config 建表见 ddl.sql（已部署），本次仅加 login_state_id 列
 ```
 - 复用 `MonitorConfigStatusEnums`（ENABLE/DISABLE）。
-- `location_id` 可空：允许用户直接填经纬度；非空时从 `LocationEntity` 取 lat/lng/city_code。
+- `login_state_id` 绑定 `grab_login_state.id`，抢单时按此取登录态；为空则报错"未绑定登录态"。
+- `location_id` 非空时从 `LocationEntity` 取 lat/lng/city_code。
 
 ### 2.3 新表 `grab_history`
 ```sql
@@ -135,21 +127,23 @@ tasks/
 
 ## 4. 核心流程设计
 
-### 4.1 登录态录入（F1）
-`POST /api/grab/login-state`，body = 抓包 header 原文（多行 `Key: Value`）或抓包 JSON。
-- 解析：正则/分割提取 `X-Sivir / X-Teemo / X-Vayne / X-Session-Id / X-Nami`。
-- 解析 `X-Sivir` JWT payload（base64url）取 `exp`、`UserId`，校验与 `X-Teemo` 一致。
-- 写入 `UserEntity.xc*` 字段并 `update`。
-- 返回录入摘要（用户id、JWT 过期时间）。
+### 4.1 登录态录入（多组）
+`POST /api/grab/login-state`，body = `{ name?, rawHeaders }`，name 为别名（如"主账号"）。
+- 解析：正则提取 `X-Sivir / X-Session-Id / X-Nami / X-Vayne`；`silk_id` 取 `X-Teemo`（抓包里 X-Teemo=silk_id）。
+- 解析 `X-Sivir` JWT 取 `UserId`(→xc_user_id)、`exp`(→expire_at)。
+- 写入 `grab_login_state` 表（每组一条），同一系统用户可多组。
+- 返回录入摘要（登录态id、别名、用户id、过期时间）。
+- 登录态 CRUD：列表/更新/删除（`GET/POST/DELETE /api/grab/login-state/{id}`）。
 
-### 4.2 手动抢单（F2）
-`POST /api/grab/config/{id}/execute` 或 `POST /api/grab/execute`(带 promotion_id 等一次性参数)。
-- 取当前 user 登录态；缺失则报错「未绑定登录态」。
-- 取位置（location_id → LocationEntity，或入参直传 lat/lng/city_code）。
+### 4.2 手动抢单（配置绑定登录态）
+`POST /api/grab/config/{id}/execute`。
+- 按 `config.loginStateId` 从 `grab_login_state` 取登录态；缺失则报错「该配置未绑定登录态」。
+- silk_id 用登录态记录的 `silk_id`（覆盖配置上的 silk_id，登录态才是账号相关）。
+- 取位置（location_id → LocationEntity）。
 - 调 `XiaochanHttp.grabPromotionQuota(...)`。
 - 落 `grab_history`(trigger_type=MANUAL)。
 - code=0 → 存 `promotion_order_id` 到 config + history，推送成功通知。
-- 不对手动触发做自动重试（重试是定时场景的配置；手动由用户自行再点）。
+- 不对手动触发做自动重试。
 
 ### 4.3 定时抢单（F3/F4）
 `GrabCronScheduler`（仿 `MonitorCronScheduler`）：
