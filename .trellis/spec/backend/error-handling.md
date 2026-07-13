@@ -1,51 +1,57 @@
 # Error Handling
 
-> How errors are handled in this project.
+> 错误处理约定。
 
 ---
 
 ## Overview
 
-<!--
-Document your project's error handling conventions here.
-
-Questions to answer:
-- What error types do you define?
-- How are errors propagated?
-- How are errors logged?
-- How are errors returned to clients?
--->
-
-(To be filled by the team)
+统一用自定义 `BusinessException` + 全局异常处理器，Controller **不写 try/catch**，所有异常转成 `BaseResult.error(msg)` 返回（HTTP 200）。
 
 ---
 
 ## Error Types
 
-<!-- Custom error classes/types -->
-
-(To be filled by the team)
+- `BusinessException`（`config` 包下，**非 `exception` 包**）extends `RuntimeException`，字段 `message` + `code`（默认 500）。
+  - 构造：`new BusinessException(String)` 或 `new BusinessException(Integer code, String message)`。
+  - 用 401 code 表示未授权（如 `throw new BusinessException(401, "用户不存在")`）。
 
 ---
 
 ## Error Handling Patterns
 
-<!-- Try-catch patterns, error propagation -->
-
-(To be filled by the team)
+- **Service / HTTP 层**：直接 `throw new BusinessException("消息")`，不捕获。
+  ```java
+  // service/impl
+  if (user == null) throw new BusinessException(401, "用户不存在");
+  ```
+- **Controller 层**：不写 try/catch，直接 `return BaseResult.ok(data)`。异常由全局处理器捕获。
+  ```java
+  @PostMapping("/config")
+  public BaseResult<Void> save(@RequestBody @Valid MonitorConfigDTO dto) {
+      service.save(dto);
+      return BaseResult.ok();
+  }
+  ```
+- **tasks 层**：`BaseTask.runSingle` 内部 try/catch/finally 捕获异常并记录到 `TaskExecHistoryEntity`，**不向外抛**（定时任务不因单次失败崩溃）。
+- **HTTP 工具层**（`XiaochanHttp`）：上游非 2xx 抛 `BusinessException("状态码错误:" + status)`；代理不可用抛 `BusinessException("代理不可用，无法请求小蚕网关")`。
 
 ---
 
 ## API Error Responses
 
-<!-- Standard error response format -->
-
-(To be filled by the team)
+- 全局处理器 `GlobalResultExceptionHandler`（`@ControllerAdvice @ResponseBody @Priority(1)`）处理：`BusinessException`、`MethodArgumentNotValidException`、`ConstraintViolationException`、`BindException`、`NoResourceFoundException`、通用 `Exception`。
+- **所有异常统一返回 HTTP 200**（处理器强制 `setResponseStatus(HttpStatus.OK)`）+ `BaseResult.error(msg)`。
+- 统一返回结构 `BaseResult<T>`：`Boolean success`、`Integer code`、`String msg`、`T data`。成功 code=200，错误 code=500。
+  - 静态工厂：`BaseResult.ok()` / `BaseResult.ok(data)` / `BaseResult.error(msg)`。
+  - `getSuccess()`：success 为 null 时按 `code==200` 判断。
+- 日志级别：`BusinessException` 用 `log.warn`，校验异常用 `log.warn`，通用 `Exception` 用 `log.error`（带异常栈）。
 
 ---
 
 ## Common Mistakes
 
-<!-- Error handling mistakes your team has made -->
-
-(To be filled by the team)
+- **不要在 Controller 写 try/catch**——交给全局处理器，否则破坏统一返回格式。
+- `BusinessException` 放 `config` 包（既有事实），新增异常类遵循同位置，勿建 `exception` 包破坏一致性。
+- 参数校验：方法参数用 `@Valid`（非 `@Validated`）于 `@RequestBody`；`@RequestParam`/`@PathVariable` 校验用 `@NotBlank(message="...")` 等，类级可加 `@Validated` 触发。
+- 当前用户获取：`UserService.getByCurrentRequest()` 从 `RequestContextHolder` 读 header `token` 查库——**无 Spring Security、无拦截器鉴权**，token 校验在 service 层手动做。
