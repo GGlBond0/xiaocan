@@ -39,3 +39,22 @@ build/
 .DS_Store
 
 logs
+
+### 工作台（Claude / Trellis / 构建产物）###
+# Claude 本地设置（个人，不入库）
+.claude/settings.local.json
+**/.env
+# 临时部署目录
+/_deploy/
+# 旧 jar（项目自带大文件）
+/xiaocan.jar
+*.jar
+# 前端构建产物
+/dist/
+**/dist/
+# Node
+**/node_modules/
+# 日志
+*.log
+logs/
+**/logs/
