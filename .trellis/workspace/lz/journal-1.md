@@ -74,3 +74,37 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 3: distance-3km 前端部署+后端代理修复+MySQL连接修复
+
+**Date**: 2026-07-14
+**Task**: distance-3km 前端部署+后端代理修复+MySQL连接修复
+**Branch**: `main`
+
+### Summary
+
+前端dist部署上线(npm build→scp /var/www/xiaocan/dist→nginx 8088/80 serve)。诊断首页空根因：distance-3km JAR基于fork main(无ProxyHolder代理)直连上游被403。从生产旧JAR javap反编译还原ProxyHolder+executeWithProxy代理逻辑补回源码。本机装JDK17+Maven本地构建(教训:服务器跑mvn致CPU满载卡死重启→MySQL重启→caching_sha2缓存清空→旧JAR缺allowPublicKeyRetrieval陷入崩溃循环)。JAR加allowPublicKeyRetrieval=true修复连库+补代理重建部署。验证:代理获取成功无403、首页30门店、within3km全<=3000、orderType=4升序、浏览器端到端OK。记4条memory。归档2任务。
+
+### Main Changes
+
+- Detailed change bullets were not supplied; see the summary above.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `d3dcbd5` | (see git log) |
+| `6fc2ec0` | (see git log) |
+
+### Testing
+
+- Validation was not recorded for this session.
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
