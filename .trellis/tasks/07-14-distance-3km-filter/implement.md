@@ -38,15 +38,15 @@
 - [ ] V5. 监控配置提交 MINIMUM_PAY/STORE_KEYWORD 带 `within3km:true`，任务命中门店全部 distance≤3000。
 - [ ] V6. STORE_ACTIVITY 表单无 3km 选项；历史配置（无 within3km）行为不变。
 
-### 部署（按 memory 拓扑）
+### 部署（按 memory 拓扑，详见 [[deploy-topology]] 记忆）
 
-- [ ] D1. 后端 push fork `GGlBond0/xiaochan` → GitHub Actions `Build Production JAR` → 下载 artifact → scp `/opt/xiaocan/xiaocan.jar` → `systemctl restart xiaocan`。
-- [ ] D2. 前端 push fork `GGlBond0/xiaocan-front` → Actions `Build Only` → 下载 dist → scp 到 `/var/www/xiaocan/dist`。
-- [ ] D3. 浏览器访问 `http://121.91.175.192:8088/` 验证首页 + 监控配置页。
+- [x] D1. 后端 push fork `GGlBond0/xiaocan`（注意：是 xiaocan 不是 xiaochan）→ GitHub Actions `Build Production JAR with Config`（`workflow_dispatch`，必填 `mysql_password`）→ 下载 artifact `xiaocan-prod-17` → scp `/opt/xiaocan/xiaocan.jar`（属主 xiaocan:xiaocan，644）→ `systemctl restart xiaocan`。已实测部署成功，2026-07-14。
+- [ ] D2. 前端 fork `GGlBond0/xiaocan-front`：⚠️ 该 fork 当前**无任何 GitHub Actions workflows**，"Build Only → /var/www/xiaocan/dist" 未经验证、属臆造。前端实际构建/部署方式待探明（需 ssh 探测服务器静态目录 + nginx 配置 + 前端本地 `npm run build` 产物如何上传），勿照此步骤执行。
+- [ ] D3. 浏览器访问 `http://121.91.175.192:8088/` 验证首页 + 监控配置页。（8088 端口/nginx 路径待实测确认）
 
 ## 回滚点
-- 后端：JAR 回滚到 `/opt/xiaocan.old.*` 备份；`systemctl restart xiaocan`。
-- 前端：dist 回滚备份；nginx 无需 reload（直接读 dist 目录）。
+- 后端：JAR 回滚到 `/opt/xiaocan/xiaocan.jar.bak.<YYYYMMDD-HHMMSS>`（实测命名规范，非 `/opt/xiaocan.old.*`）；`systemctl restart xiaocan`。
+- 前端：待探明后再补充回滚点。
 - 代码层：新增字段均为可选，回滚前端不影响后端；后端回滚到旧 JAR，前端新字段被忽略（旧 QueryListVO 反序列化忽略未知字段，安全）。
 
 ## Review Gates
