@@ -1,6 +1,7 @@
 package io.github.xiaocan.http;
 
 import cn.hutool.crypto.digest.MD5;
+import cn.hutool.http.HttpRequest;
 import cn.hutool.http.HttpResponse;
 import cn.hutool.http.HttpUtil;
 import com.alibaba.fastjson2.JSONArray;
@@ -14,6 +15,7 @@ import org.springframework.beans.BeanUtils;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.*;
+import java.util.function.Function;
 
 @Slf4j
 public class XiaochanHttp {
@@ -67,18 +69,48 @@ public class XiaochanHttp {
         Long timeMillis = System.currentTimeMillis();
         String nami = getNami();
         String ashe = getAshe(timeMillis, serverName, methodName,nami);
-        HttpResponse response = HttpUtil.createPost(url)
+        HttpResponse response = executeWithProxy(proxy -> HttpUtil.createPost(url)
                 .headerMap(getHeaders(timeMillis, ashe, cityCode, serverName, methodName, nami), true)
-                .timeout(3000)
-                .body(body)
-                .execute();
-        if (!response.isOk()) {
-            log.error("状态码错误: {}, body: {}", response.getStatus(), response.body());
-            throw new BusinessException("状态码错误:" + response.getStatus());
+                .timeout(ProxyHolder.requestTimeout())
+                .body(body), "postWithRes");
+        if (response == null || !response.isOk()) {
+            int status = response == null ? -1 : response.getStatus();
+            log.error("状态码错误: {}, body: {}", status, response == null ? "" : response.body());
+            throw new BusinessException("状态码错误:" + status);
         }
         String resBody = response.body();
         response.close();
         return resBody;
+    }
+
+    /**
+     * 经代理执行上游 HTTP 请求；代理未启用则直连。
+     * 遇 403 失效当前代理并换代理重试，最多 {@link ProxyHolder#retry()} 次。
+     * @param reqFn 接收 proxy（[ip,port]，直连时为 null），返回待执行的 HttpRequest
+     * @param tag   日志标识（方法名）
+     */
+    private HttpResponse executeWithProxy(Function<String[], HttpRequest> reqFn, String tag) {
+        if (!ProxyHolder.enabled()) {
+            return reqFn.apply(null).execute();
+        }
+        int retry = ProxyHolder.retry();
+        for (int i = 0; i < retry; i++) {
+            String[] proxy = ProxyHolder.getProxy(i > 0);
+            if (proxy == null) {
+                throw new BusinessException("代理不可用，无法请求小蚕网关");
+            }
+            HttpRequest req = reqFn.apply(proxy);
+            req.setHttpProxy(proxy[0], Integer.parseInt(proxy[1]));
+            HttpResponse response = req.execute();
+            if (response.getStatus() == 403) {
+                log.warn("{} 经代理 {}:{} 返回 403，换代理重试({}/{})", tag, proxy[0], proxy[1], i + 1, retry);
+                response.close();
+                ProxyHolder.invalidate();
+                continue;
+            }
+            return response;
+        }
+        return null;
     }
 
 
@@ -90,17 +122,17 @@ public class XiaochanHttp {
         final String methodName = "SilkwormLbsService.Suggestion";
         Map<String, Object> bodyMap = Map.of("silk_id", 0, "keyword", keyword,
                 "region", "", "page_size", 20, "page", 1, "app_id", 20);
+        Long timeMillis = System.currentTimeMillis();
+        String nami = getNami();
+        String ashe = getAshe(timeMillis, serverName, methodName,nami);
         try {
-            Long timeMillis = System.currentTimeMillis();
-            String nami = getNami();
-            String ashe = getAshe(timeMillis, serverName, methodName,nami);
-            HttpResponse response = HttpUtil.createPost(BASE_URL)
+            HttpResponse response = executeWithProxy(proxy -> HttpUtil.createPost(BASE_URL)
                     .headerMap(getHeaders(timeMillis, ashe, cityCode, serverName, methodName,nami), true)
-                    .timeout(3000)
-                    .body(JSONObject.toJSONString(bodyMap))
-                    .execute();
-            if (!response.isOk()) {
-                throw new BusinessException("状态码错误:" + response.getStatus());
+                    .timeout(ProxyHolder.requestTimeout())
+                    .body(JSONObject.toJSONString(bodyMap)), "searchAddress");
+            if (response == null || !response.isOk()) {
+                int status = response == null ? -1 : response.getStatus();
+                throw new BusinessException("状态码错误:" + status);
             }
             return parseBodyToAddress(response.body());
         } catch (Exception e) {
