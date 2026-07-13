@@ -40,3 +40,37 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 2: distance-3km 后端生产部署 + Trellis 收尾
+
+**Date**: 2026-07-14
+**Task**: distance-3km 后端生产部署 + Trellis 收尾
+**Branch**: `main`
+
+### Summary
+
+完成 distance-3km 后端部署：安装 gh CLI → PAT 触发 GitHub Actions build-prod.yml(run 29280098246) → 下载 xiaocan-prod-17 artifact → scp 到 /opt/xiaocan/xiaocan.jar → systemctl restart xiaocan。应用 4.47s 启动、HikariPool 连库成功、HTTP 200、定时任务恢复。修正 implement.md 臆造的部署步骤(后端 fork 实为 xiaocan、备份命名 xiaocan.jar.bak.<ts>、前端 fork 无 CI 待探明)。写入 deploy-topology / verify-deploy-claims 记忆。
+
+### Main Changes
+
+- Detailed change bullets were not supplied; see the summary above.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `cad62c8` | (see git log) |
+| `02f615b` | (see git log) |
+
+### Testing
+
+- Validation was not recorded for this session.
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

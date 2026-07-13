@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 1
+- **Total Sessions**: 2
 - **Last Active**: 2026-07-14
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~42 | Active |
+| `journal-1.md` | ~76 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 2 | 2026-07-14 | distance-3km 后端生产部署 + Trellis 收尾 | `cad62c8`, `02f615b` | `main` |
 | 1 | 2026-07-14 | 部署小蚕到 Ubuntu 云服务器 + 动态代理绕过 WAF + 域名反代 | `23f4584`, `20a9f87`, `ac86c12`, `93230d3` | `-` |
 <!-- @@@/auto:session-history -->
 
