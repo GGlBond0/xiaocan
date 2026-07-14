@@ -1,5 +1,6 @@
 package io.github.xiaocan.service.impl;
 
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import io.github.xiaocan.mapper.StorePushedHistoryMapper;
@@ -30,6 +31,9 @@ public class StorePushedHistoryServiceImpl extends ServiceImpl<StorePushedHistor
                 .eq(StorePushedHistoryEntity::getUserId, userId)
                 .eq(dto.getNotifyConfigId() != null, StorePushedHistoryEntity::getNotifyConfigId, dto.getNotifyConfigId())
                 .eq(dto.getNotifyType() != null, StorePushedHistoryEntity::getNotifyType, dto.getNotifyType())
+                .ge(dto.getRecentMinutes() != null && dto.getRecentMinutes() > 0,
+                        StorePushedHistoryEntity::getCreateTime,
+                        LocalDateTime.now().minusMinutes(dto.getRecentMinutes()))
                 .orderByDesc(StorePushedHistoryEntity::getId)
                 .page(new Page<>(dto.getPageNum(), dto.getPageSize()));
         return PageConvertUtil.convert(page, StorePushedHistoryVO.class);
@@ -57,5 +61,23 @@ public class StorePushedHistoryServiceImpl extends ServiceImpl<StorePushedHistor
                 .eq(StorePushedHistoryEntity::getStoreId, storeId)
                 .last("limit 1")
                 .one();
+    }
+
+    @Override
+    public StorePushedHistoryEntity findByNotifyIdAndStoreIdWithinMinutes(Integer notifyId, Integer storeId, int minutes) {
+        return lambdaQuery()
+                .eq(StorePushedHistoryEntity::getNotifyConfigId, notifyId)
+                .eq(StorePushedHistoryEntity::getStoreId, storeId)
+                .ge(StorePushedHistoryEntity::getCreateTime, LocalDateTime.now().minusMinutes(minutes))
+                .last("limit 1")
+                .one();
+    }
+
+    @Override
+    public int deleteByNotifyIdOlderThanMinutes(Integer notifyId, int minutes) {
+        LambdaQueryWrapper<StorePushedHistoryEntity> wrapper = new LambdaQueryWrapper<StorePushedHistoryEntity>()
+                .eq(StorePushedHistoryEntity::getNotifyConfigId, notifyId)
+                .lt(StorePushedHistoryEntity::getCreateTime, LocalDateTime.now().minusMinutes(minutes));
+        return getBaseMapper().delete(wrapper);
     }
 }

@@ -28,4 +28,9 @@ public class NotifyHistoryQueryDTO {
      * 监控类型
      */
     private MonitorTypeEnums notifyType;
+
+    /**
+     * 仅显示最近 N 分钟内的记录（来自所选监控配置的 dedupMinutes）；为空则不过滤
+     */
+    private Integer recentMinutes;
 }

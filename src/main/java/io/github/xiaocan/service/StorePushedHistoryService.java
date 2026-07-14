@@ -19,4 +19,16 @@ public interface StorePushedHistoryService extends IService<StorePushedHistoryEn
     StorePushedHistoryEntity findByNotifyIdAndStoreIdToday(Integer notifyId, Integer storeId);
 
     StorePushedHistoryEntity findByNotifyIdAndStoreIdAll(Integer notifyId, Integer storeId);
+
+    /**
+     * 查询某监控配置下，某门店在最近 N 分钟内是否已推送过。
+     * 用于按分钟数去重（替代永久去重）。
+     */
+    StorePushedHistoryEntity findByNotifyIdAndStoreIdWithinMinutes(Integer notifyId, Integer storeId, int minutes);
+
+    /**
+     * 删除某监控配置下、创建时间早于 now-N 分钟的推送记录（物理删除）。
+     * @return 删除的记录数
+     */
+    int deleteByNotifyIdOlderThanMinutes(Integer notifyId, int minutes);
 }

@@ -40,6 +40,7 @@ public class MinimumPayService extends BaseTask {
     @Override
     protected List<StoreInfo> filterStoreInfos(MonitorConfigEntity notifyConfig, List<StoreInfo> storeInfos) {
         MinimumPayExtNotifyConfig extNotifyConfig = JSON.parseObject(notifyConfig.getExtConfig(), MinimumPayExtNotifyConfig.class);
+        int dedupMin = extNotifyConfig.getDedupMinutes() == null ? 60 : extNotifyConfig.getDedupMinutes();
         return storeInfos
                 .stream()
                 .filter(storeInfo -> storeInfo.getLeftNumber() > 0)
@@ -47,8 +48,23 @@ public class MinimumPayService extends BaseTask {
                 // 仅命中 3km 内（距离 <= 3000 米）的门店，默认 false 不生效
                 .filter(storeInfo -> !Boolean.TRUE.equals(extNotifyConfig.getWithin3km())
                         || (storeInfo.getDistance() != null && storeInfo.getDistance() <= 3000))
-                .filter(storeInfo -> storePushedHistoryService.findByNotifyIdAndStoreIdAll(notifyConfig.getId(), storeInfo.getStoreId()) == null)
+                // 去重：同店 N 分钟内已推送过则跳过（替代永久去重）
+                .filter(storeInfo -> storePushedHistoryService.findByNotifyIdAndStoreIdWithinMinutes(notifyConfig.getId(), storeInfo.getStoreId(), dedupMin) == null)
                 .toList();
+    }
+
+    @Override
+    protected void cleanupExpired(MonitorConfigEntity notifyConfig) {
+        try {
+            MinimumPayExtNotifyConfig ext = JSON.parseObject(notifyConfig.getExtConfig(), MinimumPayExtNotifyConfig.class);
+            int dedupMin = ext.getDedupMinutes() == null ? 60 : ext.getDedupMinutes();
+            int deleted = storePushedHistoryService.deleteByNotifyIdOlderThanMinutes(notifyConfig.getId(), dedupMin);
+            if (deleted > 0) {
+                log.info("configId: {} 清理 {} 分钟前的过期推送记录 {} 条", notifyConfig.getId(), dedupMin, deleted);
+            }
+        } catch (Exception e) {
+            log.warn("configId: {} 清理过期推送记录失败", notifyConfig.getId(), e);
+        }
     }
 
 

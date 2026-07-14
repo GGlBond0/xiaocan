@@ -90,6 +90,8 @@ public class BaseTask {
                 return;
             }
             LocationEntity location = optionalLocation.get();
+            // 先清理本配置过期的推送记录（无命中也清理，确保过期记录不堆积）
+            cleanupExpired(notifyConfig);
             List<StoreInfo> storeInfos = fetchStoreInfos(notifyConfig, execHistory, location);
             List<StoreInfo> availableStores = filterStoreInfos(notifyConfig, storeInfos);
             if(availableStores.isEmpty()){
@@ -124,6 +126,14 @@ public class BaseTask {
     protected List<StoreInfo> filterStoreInfos(MonitorConfigEntity notifyConfig,
                                                List<StoreInfo> storeInfos){
         throw new UnsupportedOperationException("不支持的调用");
+    }
+
+    /**
+     * 清理本配置过期的推送记录，默认空实现；子类可重写按各自去重/过期策略清理。
+     * 在每次执行时（fetchStoreInfos 之前）调用，与是否命中无关。
+     */
+    protected void cleanupExpired(MonitorConfigEntity notifyConfig) {
+        // 默认空
     }
 
     /**
