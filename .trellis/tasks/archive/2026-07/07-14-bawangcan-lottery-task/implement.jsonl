@@ -1,0 +1,9 @@
+{"file": ".trellis/spec/backend/directory-structure.md", "reason": "新增 LotteryHttp/LotteryService/LotteryController/Entity/Mapper 需遵循后端模块组织约定"}
+{"file": ".trellis/spec/backend/database-guidelines.md", "reason": "新建 lottery_auth 表 + Entity + Mapper 需遵循 ORM/软删除约定"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "RPC 调用与 Controller 需遵循错误处理约定"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "复刻签名/HTTP 调用需遵循代码标准与禁用模式"}
+{"file": ".trellis/spec/backend/logging-guidelines.md", "reason": "刷任务流程与失败需结构化日志"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "本功能跨 DB/HTTP/Service/Controller/前端多层，需思考跨层数据流"}
+{"file": ".trellis/tasks/07-14-bawangcan-lottery-task/research/capture-findings.md", "reason": "RPC 网关/签名算法/接口清单/抽奖验证硬卡点，实现直接依据"}
+{"file": ".trellis/tasks/07-14-bawangcan-lottery-task/design.md", "reason": "技术设计：新增文件/数据模型/契约/流程"}
+{"file": ".trellis/tasks/07-14-bawangcan-lottery-task/implement.md", "reason": "执行清单与验证点"}

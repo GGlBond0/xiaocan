@@ -1,0 +1,8 @@
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "检查复刻签名/新增代码是否符合质量标准与禁用模式"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "检查 RPC 错误码与 Controller 错误处理是否合规"}
+{"file": ".trellis/spec/backend/database-guidelines.md", "reason": "检查 lottery_auth 表/Entity/Mapper 是否遵循 ORM 与软删除约定"}
+{"file": ".trellis/spec/backend/logging-guidelines.md", "reason": "检查刷任务流程日志是否结构化、无敏感信息泄漏"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "检查跨层(前端/Controller/Service/Http/DB)数据流一致性与边界"}
+{"file": ".trellis/tasks/07-14-bawangcan-lottery-task/prd.md", "reason": "验收标准对照：是否达成刷浏览任务+机会数展示+不影响抢单"}
+{"file": ".trellis/tasks/07-14-bawangcan-lottery-task/design.md", "reason": "对照设计：是否零侵入、未改 GrabAuth/XiaochanHttp 既有签名"}
+{"file": ".trellis/tasks/07-14-bawangcan-lottery-task/research/capture-findings.md", "reason": "对照抓包：签名算法/接口名/参数是否与实测一致"}
