@@ -529,8 +529,9 @@ public class GrabServiceImpl extends ServiceImpl<GrabConfigMapper, GrabConfigEnt
         }).toList();
     }
 
-    /** 饭票 cardId */
-    private static final int TICKET_CARD_ID = 1;
+    /** 饭票卡券名称（小蚕不同账号饭票 cardId 不固定：183 账号 cardId=1，153 账号 cardId=5。
+     *  故饭票按 name=="饭票" 判断，不能写死 cardId。 */
+    private static final String TICKET_CARD_NAME = "饭票";
     /** 卡券翻页单页大小 */
     private static final int CARD_PAGE_SIZE = 50;
     /** 卡券翻页累计上限（best-effort，防止异常无限翻页） */
@@ -567,7 +568,7 @@ public class GrabServiceImpl extends ServiceImpl<GrabConfigMapper, GrabConfigEnt
                 });
                 d.setCount(d.getCount() + 1);
                 if (name != null && d.getName() == null) d.setName(name);
-                if (cardId == TICKET_CARD_ID) ticketCount++;
+                if (TICKET_CARD_NAME.equals(name)) ticketCount++;
                 total++;
             }
             if (list.size() < CARD_PAGE_SIZE) break; // 不满页 → 已到末尾
@@ -605,8 +606,8 @@ public class GrabServiceImpl extends ServiceImpl<GrabConfigMapper, GrabConfigEnt
             for (Object o : list) {
                 JSONObject item = (JSONObject) o;
                 JSONObject card = item.getJSONObject("card");
-                Integer cardId = card == null ? null : card.getInteger("id");
-                if (cardId != null && cardId == TICKET_CARD_ID) ticketCount++;
+                String name = card == null ? null : card.getString("name");
+                if (TICKET_CARD_NAME.equals(name)) ticketCount++;
                 total++;
             }
             if (list.size() < CARD_PAGE_SIZE) break;
