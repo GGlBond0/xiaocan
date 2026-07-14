@@ -48,3 +48,33 @@ ORM 用 MyBatis-Plus 3.5.9（`mybatis-plus-spring-boot3-starter`）+ MySQL（`my
 - 事务：service 写操作加 `@Transactional(rollbackFor = Exception.class)`（见 `LocationServiceImpl`）。
 - JDBC URL 必须含 `allowPublicKeyRetrieval=true`，否则 MySQL 重启后 caching_sha2 缓存清空会导致连接失败（事故教训，见 `application.yaml`）。
 - 跨表关联：本项目**不用**联表查询，用多次查询 + 内存组装。
+
+---
+
+## Convention: 全局单份配置表 + Holder 静态工具类 + 保存即生效
+
+**What**：站点级全局配置（代理 IP 池、商家名称黑名单）用"全局单份表 + 静态 Holder 工具类"模式，而非环境变量或每用户多行表。
+
+**Why**：环境变量改一次要重启服务；运行时读 DB + 内存快照，前端设置页保存即生效无需重启。Holder 静态方法让监控/抢单等调用方零成本接入（无需注入 Bean、无需改方法签名）。
+
+**表结构约定**：
+- 表名 `xxx_config`（如 `proxy_config`、`merchant_blacklist_config`），主键 `id` 固定为 1（全局单份），自增。
+- ServiceImpl 含 `ensureRow()`（synchronized，表空则用默认值插 id=1 行）做懒初始化。
+- 标准 5 件套：`XxxConfig{Entity,Mapper,DTO,VO}` + `XxxConfigService`/`Impl`/`Controller`，Entity 带 `@TableLogic deleted`。
+
+**Holder 契约**（`XxxHolder` 静态工具类，放 `http/` 或同级包，对齐 `ProxyHolder`）：
+```java
+static boolean isXxx(...)        // 供监控/抢单/HTTP 调用方零成本接入
+static void invalidate()        // Service.updateConfig 落库后调用，清快照实现即时生效
+static void loadCfg()            // 经 SpringContextUtil.getBean(XxxService.class).getEntity() 读 DB
+```
+- **5s 内存快照**（`CFG_TTL`）：`loadCfg()` 快照未过期直接复用，避免每次调用打 DB。
+- **异常/容器未就绪回退"安全默认值"**：`getEntity()` 返回 null 或抛异常时写一个禁用占位快照（如 `enabled=false`），且**刷新 `cfgLoadedAt` 使 TTL 节流生效**——避免 DB 故障时每次调用都重试打 DB。占位 entity 从不落库，仅内存占位。
+- **service 调用在锁外**：`loadCfg()` 取 entity 在 synchronized 块外执行，避免持锁时进入 Service 实例锁形成反向锁顺序；锁内仅写快照。
+- **即时生效**：`updateConfig` 落库后调 `Holder.invalidate()`，清快照使下次请求用新值。
+
+**匹配/解析逻辑收敛在 Holder 一处**：监控侧与抢单侧共用同一 `isXxx(...)`，避免两处实现漂移。如商家黑名单的关键字 AND/OR 解析在 `MerchantBlacklistHolder.parseRules` + `isBlacklisted` 一处。
+
+**何时用**：站点级策略（全局生效、所有登录用户可读可改、无管理员分级）。每用户隔离配置则参考 `grab_config`/`notify_config` 的多行 + `user_id` 模式，不用本模式。
+
+**Related**：`proxy_config`/`ProxyHolder`、`merchant_blacklist_config`/`MerchantBlacklistHolder`；`error-handling.md`「定时任务复用的方法不能依赖 HTTP 请求上下文」（Holder/service 显式参数，定时任务线程安全调用）。
