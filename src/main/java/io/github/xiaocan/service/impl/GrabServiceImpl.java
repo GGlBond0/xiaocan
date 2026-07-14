@@ -5,6 +5,7 @@ import com.alibaba.fastjson2.JSONObject;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import io.github.xiaocan.config.BusinessException;
 import io.github.xiaocan.http.GrabAuth;
+import io.github.xiaocan.http.MerchantBlacklistHolder;
 import io.github.xiaocan.http.XiaochanHttp;
 import io.github.xiaocan.mapper.GrabConfigMapper;
 import io.github.xiaocan.model.entity.GrabConfigEntity;
@@ -409,6 +410,14 @@ public class GrabServiceImpl extends ServiceImpl<GrabConfigMapper, GrabConfigEnt
         }
         String storeName = promoSnapshot == null ? null : promoSnapshot.getName();
         String promoDetail = promoSnapshot == null ? null : buildPromoDetail(promoSnapshot);
+
+        // 商家黑名单拦截：拿到 storeName 后、重试循环前判断；命中则不发抢单请求，记历史 + 推失败通知 + return。
+        // storeName==null（promoSnapshot 查询失败）时 isBlacklisted 返回 false，走原逻辑不误伤。
+        if (MerchantBlacklistHolder.isBlacklisted(storeName)) {
+            saveHistory(config, user.getId(), false, -1, "商家黑名单拦截", null, 1, triggerType, storeName, promoDetail);
+            push(config, user, "抢单拦截", "活动" + config.getPromotionId() + " 商家\"" + storeName + "\"命中黑名单，已拦截");
+            return fail(-1, "商家黑名单拦截");
+        }
 
         boolean retry = Boolean.TRUE.equals(config.getEnableRetry());
         int maxRetry = retry ? Math.max(1, config.getMaxRetry() == null ? 1 : config.getMaxRetry()) : 1;

@@ -8,6 +8,7 @@ import io.github.xiaocan.model.entity.MonitorConfigEntity;
 import io.github.xiaocan.model.entity.TaskExecHistoryEntity;
 import io.github.xiaocan.model.enums.MonitorConfigStatusEnums;
 import io.github.xiaocan.model.enums.MonitorTypeEnums;
+import io.github.xiaocan.http.MerchantBlacklistHolder;
 import io.github.xiaocan.service.MonitoryConfigService;
 import io.github.xiaocan.service.StorePushedHistoryService;
 import io.github.xiaocan.service.UserService;
@@ -54,6 +55,8 @@ public class MinimumPayService extends BaseTask {
         int dedupMin = dedupMinutesOf(notifyConfig);
         return storeInfos
                 .stream()
+                // 商家黑名单：命中门店直接剔除，不推送、不写历史
+                .filter(storeInfo -> !MerchantBlacklistHolder.isBlacklisted(storeInfo.getName()))
                 .filter(storeInfo -> storeInfo.getLeftNumber() > 0)
                 .filter(storeInfo -> storeInfo.getPrice().subtract(storeInfo.getRebatePrice()).compareTo(extNotifyConfig.getMinimumPay()) <= 0)
                 // 仅命中 3km 内（距离 <= 3000 米）的门店，默认 false 不生效

@@ -10,6 +10,7 @@ import io.github.xiaocan.model.entity.StorePushedHistoryEntity;
 import io.github.xiaocan.model.entity.TaskExecHistoryEntity;
 import io.github.xiaocan.model.enums.MonitorConfigStatusEnums;
 import io.github.xiaocan.model.enums.MonitorTypeEnums;
+import io.github.xiaocan.http.MerchantBlacklistHolder;
 import io.github.xiaocan.service.MonitoryConfigService;
 import io.github.xiaocan.service.StorePushedHistoryService;
 import io.github.xiaocan.service.XiaoChanService;
@@ -109,6 +110,8 @@ public class StoreTask extends BaseTask {
      */
     @Override
     protected List<StoreInfo> filterStoreInfos(MonitorConfigEntity notifyConfig, List<StoreInfo> storeInfos) {
+        // 商家黑名单单点过滤：在 STORE_ACTIVITY / STORE_KEYWORD 两分支之前统一剔除命中门店
+        storeInfos = storeInfos.stream().filter(s -> !MerchantBlacklistHolder.isBlacklisted(s.getName())).toList();
         if (notifyConfig.getType() == MonitorTypeEnums.STORE_ACTIVITY) {
             StoreExtNotifyConfig storeExtNotifyConfig = JSON.parseObject(notifyConfig.getExtConfig(), StoreExtNotifyConfig.class);
             return storeInfos
