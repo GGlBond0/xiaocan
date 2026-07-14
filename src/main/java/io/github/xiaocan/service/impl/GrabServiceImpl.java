@@ -17,6 +17,7 @@ import io.github.xiaocan.model.StoreInfo;
 import io.github.xiaocan.model.enums.MonitorConfigStatusEnums;
 import io.github.xiaocan.model.dto.GrabConfigDTO;
 import io.github.xiaocan.model.dto.GrabLoginStateDTO;
+import io.github.xiaocan.model.vo.GrabCardCountVO;
 import io.github.xiaocan.model.vo.GrabCardVO;
 import io.github.xiaocan.model.vo.GrabConfigVO;
 import io.github.xiaocan.model.vo.GrabHistoryVO;
@@ -329,6 +330,22 @@ public class GrabServiceImpl extends ServiceImpl<GrabConfigMapper, GrabConfigEnt
             saveHistory(config, user.getId(), false, -1, "登录态JWT已过期", null, 1, triggerType, null, null);
             return result;
         }
+        // 饭票校验：饭票(cardId==1)为 0 时不发上游请求，直接失败推送，规避 WAF 风控
+        // 查询失败(null)不阻断抢单（宁可放行也不误杀）；直接用已构造的 auth，避免依赖 HTTP 上下文（定时任务安全）
+        Integer ticketCount = null;
+        try {
+            ticketCount = countTicketByAuth(auth);
+        } catch (Exception e) {
+            log.warn("抢单前饭票查询失败 configId={}: {}", config.getId(), e.getMessage());
+        }
+        if (ticketCount != null && ticketCount <= 0) {
+            result.setSuccess(false);
+            result.setCode(-1);
+            result.setMsg("饭票不足，请先领取");
+            saveHistory(config, user.getId(), false, -1, "饭票不足，请先领取", null, 1, triggerType, null, null);
+            push(user, "抢单失败", "活动" + config.getPromotionId() + " 饭票不足，请先领取");
+            return result;
+        }
         // 位置
         String lat, lng; Integer cityCode;
         Optional<LocationEntity> loc = locationService.getOptById(config.getLocationId());
@@ -473,6 +490,110 @@ public class GrabServiceImpl extends ServiceImpl<GrabConfigMapper, GrabConfigEnt
             if (cre != null) vo.setCreatedAt(java.time.Instant.ofEpochSecond(cre).atZone(zone).toLocalDateTime());
             return vo;
         }).toList();
+    }
+
+    /** 饭票 cardId */
+    private static final int TICKET_CARD_ID = 1;
+    /** 卡券翻页单页大小 */
+    private static final int CARD_PAGE_SIZE = 50;
+    /** 卡券翻页累计上限（best-effort，防止异常无限翻页） */
+    private static final int CARD_FETCH_MAX = 200;
+
+    @Override
+    public GrabCardCountVO countCards(Integer loginStateId) {
+        GrabAuth auth = resolveAuth(loginStateId);
+        // 翻页拉取全部卡券，按 (cardId, name) 聚合计数
+        java.util.LinkedHashMap<Integer, GrabCardCountVO.CardCountDetail> detailMap = new java.util.LinkedHashMap<>();
+        int offset = 0;
+        int total = 0;
+        int ticketCount = 0;
+        while (total < CARD_FETCH_MAX) {
+            JSONObject resp = xiaochanHttp.getUserCardList(auth, CARD_PAGE_SIZE, offset, 0);
+            JSONObject statusObj = resp.getJSONObject("status");
+            if (statusObj == null || statusObj.getIntValue("code") != 0) {
+                throw new BusinessException("查询卡券失败:" + (statusObj == null ? "无响应" : statusObj.getString("msg")));
+            }
+            JSONArray list = resp.getJSONArray("list");
+            if (list == null || list.isEmpty()) break;
+            for (Object o : list) {
+                JSONObject item = (JSONObject) o;
+                JSONObject card = item.getJSONObject("card");
+                Integer cardId = card == null ? null : card.getInteger("id");
+                String name = card == null ? null : card.getString("name");
+                if (cardId == null) continue;
+                GrabCardCountVO.CardCountDetail d = detailMap.computeIfAbsent(cardId, k -> {
+                    GrabCardCountVO.CardCountDetail x = new GrabCardCountVO.CardCountDetail();
+                    x.setCardId(k);
+                    x.setName(name);
+                    x.setCount(0);
+                    return x;
+                });
+                d.setCount(d.getCount() + 1);
+                if (name != null && d.getName() == null) d.setName(name);
+                if (cardId == TICKET_CARD_ID) ticketCount++;
+                total++;
+            }
+            if (list.size() < CARD_PAGE_SIZE) break; // 不满页 → 已到末尾
+            offset += CARD_PAGE_SIZE;
+        }
+        GrabCardCountVO vo = new GrabCardCountVO();
+        vo.setTicketCount(ticketCount);
+        vo.setDetails(new java.util.ArrayList<>(detailMap.values()));
+        return vo;
+    }
+
+    @Override
+    public Integer getTicketCount(Integer loginStateId) {
+        return countTicketByAuth(resolveAuth(loginStateId));
+    }
+
+    /**
+     * 按已构造的 GrabAuth 翻页统计饭票(cardId==1)张数。
+     * 查询失败返回 null（抢单前校验宁可放行也不误杀）。
+     * 不依赖 HTTP 请求上下文，可在定时任务（doGrab）中安全调用。
+     */
+    private Integer countTicketByAuth(GrabAuth auth) {
+        int offset = 0;
+        int total = 0;
+        int ticketCount = 0;
+        while (total < CARD_FETCH_MAX) {
+            JSONObject resp = xiaochanHttp.getUserCardList(auth, CARD_PAGE_SIZE, offset, 0);
+            JSONObject statusObj = resp.getJSONObject("status");
+            if (statusObj == null || statusObj.getIntValue("code") != 0) {
+                // 查询失败按未知处理：返回 null 表示未知，抢单前校验放行
+                return null;
+            }
+            JSONArray list = resp.getJSONArray("list");
+            if (list == null || list.isEmpty()) break;
+            for (Object o : list) {
+                JSONObject item = (JSONObject) o;
+                JSONObject card = item.getJSONObject("card");
+                Integer cardId = card == null ? null : card.getInteger("id");
+                if (cardId != null && cardId == TICKET_CARD_ID) ticketCount++;
+                total++;
+            }
+            if (list.size() < CARD_PAGE_SIZE) break;
+            offset += CARD_PAGE_SIZE;
+        }
+        return ticketCount;
+    }
+
+    /** 复用 listCards 的登录态校验逻辑，返回 GrabAuth */
+    private GrabAuth resolveAuth(Integer loginStateId) {
+        UserEntity user = userService.getByCurrentRequest();
+        GrabLoginStateEntity loginState = loginStateId == null ? null
+                : grabLoginStateMapper.selectById(loginStateId);
+        if (loginState == null || !loginState.getUserId().equals(user.getId())) {
+            throw new BusinessException("登录态不存在或无权使用");
+        }
+        if (loginState.getExpireAt() != null && loginState.getExpireAt().isBefore(LocalDateTime.now())) {
+            throw new BusinessException("该登录态 JWT 已过期，请更新");
+        }
+        GrabAuth auth = GrabAuth.from(loginState);
+        if (auth == null || !auth.isComplete()) {
+            throw new BusinessException("登录态不完整");
+        }
+        return auth;
     }
 
     private void saveHistory(GrabConfigEntity config, Integer userId, boolean success, int code,

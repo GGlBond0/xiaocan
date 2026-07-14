@@ -4,6 +4,7 @@ import io.github.xiaocan.model.BaseResult;
 import io.github.xiaocan.model.dto.GrabConfigDTO;
 import io.github.xiaocan.model.dto.GrabLoginStateDTO;
 import io.github.xiaocan.model.enums.MonitorConfigStatusEnums;
+import io.github.xiaocan.model.vo.GrabCardCountVO;
 import io.github.xiaocan.model.vo.GrabCardVO;
 import io.github.xiaocan.model.vo.GrabConfigVO;
 import io.github.xiaocan.model.vo.GrabHistoryVO;
@@ -116,5 +117,13 @@ public class GrabController {
             @RequestParam(required = false, defaultValue = "0") Integer offset,
             @RequestParam(required = false, defaultValue = "0") Integer status) {
         return BaseResult.ok(grabService.listCards(loginStateId, number, offset, status));
+    }
+
+    /**
+     * 卡券数量汇总：按登录态查该账号各类卡券数量（含饭票 cardId==1）
+     */
+    @GetMapping("/card/count")
+    public BaseResult<GrabCardCountVO> countCards(@RequestParam Integer loginStateId) {
+        return BaseResult.ok(grabService.countCards(loginStateId));
     }
 }
