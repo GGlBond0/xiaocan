@@ -242,3 +242,34 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 8: 部署饭票数量查询与抢单前校验到生产
+
+**Date**: 2026-07-14
+**Task**: 部署饭票数量查询与抢单前校验到生产
+**Branch**: `main`
+
+### Summary
+
+本地 mvn -DskipTests package 出 target/xiaocan.jar(43MB，commit a9b538e)，scp 上传 121.91.175.192。服务器备份旧 jar 为 xiaocan.jar.bak.20260714092044，mv 替换 + chown xiaocan + systemctl restart xiaocan，09:22:17 Started in 4.15s HTTP 200 active。后端监听 127.0.0.1:10234 经 nginx 反代。无 DDL。端到端验证全部通过：/api/grab/card/count?loginStateId=2(183账户) 返回 {ticketCount:2, details[]}，与 /api/grab/card/list 中 cardId==1 条数=2 交叉一致(探店5/饭票2/超前2/延时2/修改3)；无权/不存在 id 返回 BusinessException「登录态不存在或无权使用」非崩溃；饭票>0 抢单校验放行不阻断。6 项 AC 全过。启动后 ERROR 行为无 token 测试请求的 Tomcat 拒绝页非故障。回滚=备份 jar 覆盖+restart。
+
+### Main Changes
+
+- Detailed change bullets were not supplied; see the summary above.
+
+### Git Commits
+
+(No commits - planning session)
+
+### Testing
+
+- Validation was not recorded for this session.
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
