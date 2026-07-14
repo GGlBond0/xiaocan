@@ -273,3 +273,36 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 9: 多spt推送-按地址绑定登录态与推送通道
+
+**Date**: 2026-07-14
+**Task**: 多spt推送-按地址绑定登录态与推送通道
+**Branch**: `main`
+
+### Summary
+
+推送目标从user级单spt改为按location路由多spt:grab_login_state加location_id、新建location_push_target表、新增PushService收口(按locationId路由+user.spt兜底,定时任务线程安全)、监控/抢单/JWT过期3处调用点改pushToLocation、地址维度spt CRUD+测试推送(无验证码)、前端地址页加登录态/spt绑定段、老登录态页收口只读。已本地构建部署:后端jar scp+DDL+重启(HikariPool OK),前端dist部署,端到端验证spt绑定CRUD/越权/测试推送链路通(WxPusher返回code1001确认HTTP链路通)。spec新增push-routing.md。
+
+### Main Changes
+
+- Detailed change bullets were not supplied; see the summary above.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `74e1e70` | (see git log) |
+
+### Testing
+
+- Validation was not recorded for this session.
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

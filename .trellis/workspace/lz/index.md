@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 8
+- **Total Sessions**: 9
 - **Last Active**: 2026-07-14
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~275 | Active |
+| `journal-1.md` | ~308 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 9 | 2026-07-14 | 多spt推送-按地址绑定登录态与推送通道 | `74e1e70` | `main` |
 | 8 | 2026-07-14 | 部署饭票数量查询与抢单前校验到生产 | - | `main` |
 | 7 | 2026-07-14 | 饭票数量查询与抢单前校验 | `cbfbf4b`, `1b44c75` | `main` |
 | 6 | 2026-07-14 | 代理IP池配置可视化设置页（跨前后端，已部署生产） | `dbb06e4`, `a3fa03c` | `main` |
