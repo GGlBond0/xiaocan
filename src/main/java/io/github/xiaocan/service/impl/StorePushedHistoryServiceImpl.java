@@ -25,15 +25,17 @@ public class StorePushedHistoryServiceImpl extends ServiceImpl<StorePushedHistor
     public Page<StorePushedHistoryVO> pageByUser(NotifyHistoryQueryDTO dto) {
         // 获取当前用户ID
         Integer userId = userService.getByCurrentRequest().getId();
+        // 最近 N 分钟过滤：提前求值避免 null 拆箱；为空则不过滤
+        Integer recentMinutes = dto.getRecentMinutes();
+        boolean filterByMinutes = recentMinutes != null && recentMinutes > 0;
+        LocalDateTime minCreateTime = filterByMinutes ? LocalDateTime.now().minusMinutes(recentMinutes) : null;
 
         // 使用lambdaQuery链式查询并转换为VO
         Page<StorePushedHistoryEntity> page = lambdaQuery()
                 .eq(StorePushedHistoryEntity::getUserId, userId)
                 .eq(dto.getNotifyConfigId() != null, StorePushedHistoryEntity::getNotifyConfigId, dto.getNotifyConfigId())
                 .eq(dto.getNotifyType() != null, StorePushedHistoryEntity::getNotifyType, dto.getNotifyType())
-                .ge(dto.getRecentMinutes() != null && dto.getRecentMinutes() > 0,
-                        StorePushedHistoryEntity::getCreateTime,
-                        LocalDateTime.now().minusMinutes(dto.getRecentMinutes()))
+                .ge(filterByMinutes, StorePushedHistoryEntity::getCreateTime, minCreateTime)
                 .orderByDesc(StorePushedHistoryEntity::getId)
                 .page(new Page<>(dto.getPageNum(), dto.getPageSize()));
         return PageConvertUtil.convert(page, StorePushedHistoryVO.class);
