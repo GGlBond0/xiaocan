@@ -91,6 +91,21 @@ public class GrabConfigEntity {
      */
     private Boolean auto;
     /**
+     * 监控自动抢来源 monitor_config.id；手动/定时抢单为 null。
+     * 用于到点回调时重读账号/平台优先级与模式，推进降级。
+     */
+    private Integer monitorConfigId;
+    /**
+     * 降级游标："平台索引:账号索引"，记录本次监控命中已尝试到的组合/账号位置，
+     * 供到点回调从断点继续换号/降级。手动/定时抢单为 null。
+     */
+    private String grabSeq;
+    /**
+     * 同门店所有组合快照（JSON），供到点回调/降级时重建组合列表（含 promotionId/storePlatform/
+     * startTime/endTime/storeName/promoDetail 等够 doGrab + 时间判断的字段）。手动/定时抢单为 null。
+     */
+    private String comboSnapshot;
+    /**
      * 活动快照：商家名
      */
     private String storeName;

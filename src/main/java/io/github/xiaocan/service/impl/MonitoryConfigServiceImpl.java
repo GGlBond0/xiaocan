@@ -118,17 +118,42 @@ public class MonitoryConfigServiceImpl extends ServiceImpl<NotifyConfigMapper, M
         }
 
         UserEntity user = userService.getByCurrentRequest();
-        // 自动抢单校验：开启时必须绑定属于当前用户的登录态
+        // 自动抢单校验：开启时必须绑定属于当前用户的登录态（支持多账号优先级）
         if (Boolean.TRUE.equals(dto.getAutoGrab())) {
-            if (dto.getGrabLoginStateId() == null) {
+            // 解析账号优先级列表：优先 grabLoginStateIds，空则回退 grabLoginStateId 单值
+            java.util.List<Integer> accountIds = parseAccountIds(dto.getGrabLoginStateIds(), dto.getGrabLoginStateId());
+            if (accountIds.isEmpty()) {
                 throw new BusinessException("开启自动抢单时必须选择抢单账号");
             }
-            if (loginStateService.getEntity(dto.getGrabLoginStateId()) == null) {
-                throw new BusinessException("所选抢单账号不存在或无权使用");
+            // 去重保序校验：每个 id 必须存在且属于当前用户
+            java.util.LinkedHashSet<Integer> seen = new java.util.LinkedHashSet<>();
+            for (Integer id : accountIds) {
+                if (id == null) continue;
+                if (loginStateService.getEntity(id) == null) {
+                    throw new BusinessException("所选抢单账号不存在或无权使用: id=" + id);
+                }
+                seen.add(id);
+            }
+            if (seen.isEmpty()) {
+                throw new BusinessException("开启自动抢单时必须选择抢单账号");
+            }
+            // 规整化：回写去重保序的 ids 串，并把 grabLoginStateId 回填为第一个（兼容旧读路径）
+            dto.setGrabLoginStateIds(joinIds(seen));
+            dto.setGrabLoginStateId(seen.iterator().next());
+            // 平台至少一个（顺序即优先级，由前端保证，这里只校验非空）
+            if (!StringUtils.hasText(dto.getGrabPlatforms())) {
+                throw new BusinessException("开启自动抢单时至少选择一个抢单平台");
+            }
+            // 模式空默认 SINGLE
+            if (dto.getGrabMode() == null) {
+                dto.setGrabMode(io.github.xiaocan.model.enums.GrabModeEnums.SINGLE);
             }
         } else {
-            // 未开启自动抢单：清空登录态绑定，避免脏数据
+            // 未开启自动抢单：清空抢单相关字段，避免脏数据
             dto.setGrabLoginStateId(null);
+            dto.setGrabLoginStateIds(null);
+            dto.setGrabPlatforms(null);
+            dto.setGrabMode(null);
         }
         MonitorConfigEntity entity;
         if (dto.getId() != null) {
@@ -191,5 +216,32 @@ public class MonitoryConfigServiceImpl extends ServiceImpl<NotifyConfigMapper, M
                 .set(MonitorConfigEntity::getStatus, status)
                 .update();
         monitorCronScheduler.refresh(configId);
+    }
+
+    /**
+     * 解析账号优先级列表：优先 grabLoginStateIds（逗号串），空则回退 grabLoginStateId 单值。
+     * 保留输入顺序，不去重（去重在调用处做）。
+     */
+    private java.util.List<Integer> parseAccountIds(String grabLoginStateIds, Integer grabLoginStateId) {
+        java.util.List<Integer> list = new java.util.ArrayList<>();
+        if (grabLoginStateIds != null && !grabLoginStateIds.isBlank()) {
+            for (String s : grabLoginStateIds.split(",")) {
+                String t = s.trim();
+                if (!t.isEmpty()) {
+                    try {
+                        list.add(Integer.parseInt(t));
+                    } catch (NumberFormatException ignore) { /* 跳过非法 */ }
+                }
+            }
+        }
+        if (list.isEmpty() && grabLoginStateId != null) {
+            list.add(grabLoginStateId);
+        }
+        return list;
+    }
+
+    /** 有序 id 集合拼成逗号串。 */
+    private String joinIds(java.util.Collection<Integer> ids) {
+        return ids.stream().map(String::valueOf).collect(java.util.stream.Collectors.joining(","));
     }
 }

@@ -3,6 +3,7 @@ package io.github.xiaocan.model.dto;
 import io.github.xiaocan.model.MinimumPayExtNotifyConfig;
 import io.github.xiaocan.model.StoreExtNotifyConfig;
 import io.github.xiaocan.model.StoreKeywordExtNotifyConfig;
+import io.github.xiaocan.model.enums.GrabModeEnums;
 import io.github.xiaocan.model.enums.MonitorTypeEnums;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
@@ -65,13 +66,23 @@ public class monitorConfigDTO {
      */
     private Boolean autoGrab;
     /**
-     * 自动抢单所用登录态id，指向 login_state.id（autoGrab=true 时必填）
+     * 自动抢单所用登录态id，指向 login_state.id（单账号兼容字段）。
+     * 多账号优先级场景前端提交 grabLoginStateIds，后端保存时回填此字段为列表第一个。
      */
     private Integer grabLoginStateId;
     /**
+     * 有序抢单账号 id 串，逗号分隔，顺序即账号优先级（如 "12,5,8"）。
+     * null/空 → 回退 grabLoginStateId 单值。仅 autoGrab=true 时有意义。
+     */
+    private String grabLoginStateIds;
+    /**
      * 启用抢单的平台集合，逗号分隔 int（1美团/2饿了么/3京东，如 "1,2"）。
-     * null/空 → 仅美团。仅 autoGrab=true 时有意义。
+     * 顺序即平台优先级。null/空 → 仅美团。仅 autoGrab=true 时有意义。
      */
     private String grabPlatforms;
+    /**
+     * 抢单模式 SINGLE/ALL，null → SINGLE。仅 autoGrab=true 时有意义。
+     */
+    private GrabModeEnums grabMode;
 
 }

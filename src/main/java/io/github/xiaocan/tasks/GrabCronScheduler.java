@@ -31,6 +31,9 @@ public class GrabCronScheduler {
     private TaskScheduler taskScheduler;
     @Resource
     private GrabService grabService;
+    @Resource
+    @org.springframework.context.annotation.Lazy
+    private io.github.xiaocan.service.AutoGrabService autoGrabService;
 
     private final Map<Integer, ScheduledFuture<?>> scheduledFutureMap = new ConcurrentHashMap<>();
 
@@ -103,7 +106,13 @@ public class GrabCronScheduler {
             return;
         }
         try {
-            grabService.doGrab(latest, triggerType);
+            // 监控自动抢来源（带 monitorConfigId）的到点任务交回 AutoGrabService 续推换号/降级；
+            // 其余（手动/定时）走原 doGrab。
+            if (latest.getMonitorConfigId() != null) {
+                autoGrabService.onScheduledFire(latest);
+            } else {
+                grabService.doGrab(latest, triggerType);
+            }
         } catch (Exception e) {
             log.error("抢单调度执行异常 configId:{}", latest.getId(), e);
         }

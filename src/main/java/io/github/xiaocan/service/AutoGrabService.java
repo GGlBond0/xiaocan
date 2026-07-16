@@ -11,11 +11,21 @@ import io.github.xiaocan.model.entity.MonitorConfigEntity;
 public interface AutoGrabService {
 
     /**
-     * 监控命中后尝试自动建立抢单任务。
+     * 监控命中后尝试自动建立抢单任务（多账号多平台优先级轮询）。
      *
-     * @param config 命中的监控配置（含 autoGrab / grabLoginStateId / locationId / userId）
-     * @param store  命中的门店活动（取 promotionId / startTime / endTime / type）
-     * @return 建成的 grab_config.id；未建（未开启/非美团/防重/登录态过期/活动过期）返回 null
+     * @param config          命中的监控配置（含 autoGrab / grabLoginStateIds / grabPlatforms / grabMode / locationId / userId）
+     * @param sameStoreCombos 同一次命中里同门店的所有 (活动,平台) 组合（按 storeId 分组后传入）。
+     *                        降级在这些组合间按平台优先级进行；不同门店由调用方分组、互不降级。
+     * @return 首个建成的 grab_config.id；未建返回 null
      */
-    Long tryCreateFromMonitor(MonitorConfigEntity config, StoreInfo store);
+    Long tryCreateFromMonitor(MonitorConfigEntity config, java.util.List<StoreInfo> sameStoreCombos);
+
+    /**
+     * 监控自动抢来源的定时任务（grab_config.monitorConfigId 非空）到点触发回调：
+     * 从 comboSnapshot 重建同门店组合、重读 monitor_config 账号/平台优先级/模式，
+     * 按 grabSeq 游标从断点继续换号/降级。非监控来源(scheduled.monitorConfigId==null)回退 doGrab。
+     *
+     * @param scheduled 到点触发的 grab_config（含 monitorConfigId / grabSeq / comboSnapshot）
+     */
+    void onScheduledFire(io.github.xiaocan.model.entity.GrabConfigEntity scheduled);
 }

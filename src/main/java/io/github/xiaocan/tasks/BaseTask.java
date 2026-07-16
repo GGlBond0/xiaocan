@@ -194,12 +194,19 @@ public class BaseTask {
      */
     private void triggerAutoGrab(MonitorConfigEntity notifyConfig, List<StoreInfo> availableStores) {
         if (!Boolean.TRUE.equals(notifyConfig.getAutoGrab())) return;
+        // 按 storeId 分组：同门店所有 (活动,平台) 组合一组，降级在组内按平台优先级进行；不同门店互不降级。
+        java.util.Map<Integer, List<StoreInfo>> byStore = new java.util.LinkedHashMap<>();
         for (StoreInfo store : availableStores) {
+            if (store.getStoreId() == null) continue;
+            byStore.computeIfAbsent(store.getStoreId(), k -> new java.util.ArrayList<>()).add(store);
+        }
+        for (List<StoreInfo> sameStoreCombos : byStore.values()) {
             try {
-                autoGrabService.tryCreateFromMonitor(notifyConfig, store);
+                autoGrabService.tryCreateFromMonitor(notifyConfig, sameStoreCombos);
             } catch (Exception e) {
+                Integer promoId = sameStoreCombos.isEmpty() ? null : sameStoreCombos.get(0).getPromotionId();
                 log.warn("自动抢单建任务异常 configId={}, promotionId={}: {}",
-                        notifyConfig.getId(), store.getPromotionId(), e.getMessage());
+                        notifyConfig.getId(), promoId, e.getMessage());
             }
         }
     }

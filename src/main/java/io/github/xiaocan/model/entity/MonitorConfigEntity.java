@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableLogic;
 import com.baomidou.mybatisplus.annotation.TableName;
+import io.github.xiaocan.model.enums.GrabModeEnums;
 import io.github.xiaocan.model.enums.MonitorConfigStatusEnums;
 import io.github.xiaocan.model.enums.MonitorTypeEnums;
 import lombok.Data;
@@ -66,14 +67,28 @@ public class MonitorConfigEntity {
      */
     private Boolean autoGrab;
     /**
-     * 自动抢单所用登录态id，指向 login_state.id（autoGrab=true 时必填）
+     * 自动抢单所用登录态id，指向 login_state.id。
+     * 语义已升级：单账号场景仍用此字段（向后兼容存量配置）；
+     * 多账号优先级场景优先读 grabLoginStateIds，此字段在保存时回填为列表第一个。
      */
     private Integer grabLoginStateId;
     /**
+     * 有序抢单账号 id 串，逗号分隔，顺序即账号优先级（如 "12,5,8"=12 最优先）。
+     * null/空 → 回退使用 grabLoginStateId 单值（向后兼容）。
+     * 仅 autoGrab=true 时有意义。
+     */
+    private String grabLoginStateIds;
+    /**
      * 启用抢单的平台集合，逗号分隔 int（1美团/2饿了么/3京东，如 "1,2"）。
+     * 语义升级：顺序即平台优先级（串内先后=优先级高到低）。
      * null/空 → 仅美团（向后兼容存量配置）。
      */
     private String grabPlatforms;
+    /**
+     * 抢单模式：SINGLE 抢一个名额（组合内换号、组合间降级）/ ALL 每账号各抢一个（不换号）。
+     * null → SINGLE（向后兼容存量配置的单账号单次行为）。
+     */
+    private GrabModeEnums grabMode;
     /**
      * 创建时间
      */

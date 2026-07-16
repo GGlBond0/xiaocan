@@ -379,3 +379,21 @@ ALTER TABLE `grab_config`
 -- ============================
 ALTER TABLE `monitor_config`
   ADD COLUMN `grab_platforms` VARCHAR(64) NULL DEFAULT '1' COMMENT '启用抢单平台集合,逗号分隔(1美团/2饿了么/3京东),默认仅美团';
+
+-- ============================
+-- 监控抢单多账号多平台优先级轮询 (2026-07-17, task 07-17-monitor-grab-multi-account-priority)
+-- 抢单账号单选→可排序多选(顺序=账号优先级)；抢单模式 SINGLE/ALL；
+-- grab_config 加溯源+降级游标+组合快照，供到点回调续推换号/降级。
+-- 限频 code==70 = (账号×门店) 限频，换号可破；详见 task prd/design。
+-- ============================
+ALTER TABLE `monitor_config`
+  ADD COLUMN `grab_login_state_ids` VARCHAR(255) NULL COMMENT '有序抢单账号id串,逗号分隔,顺序=优先级;空回退grab_login_state_id';
+ALTER TABLE `monitor_config`
+  ADD COLUMN `grab_mode` VARCHAR(16) NULL DEFAULT 'SINGLE' COMMENT '抢单模式 SINGLE抢一个名额(换号降级)/ALL每账号各抢一个(不换号)';
+ALTER TABLE `grab_config`
+  ADD COLUMN `monitor_config_id` INT NULL COMMENT '监控自动抢来源monitor_config.id;手动/定时为空';
+ALTER TABLE `grab_config`
+  ADD COLUMN `grab_seq` VARCHAR(64) NULL COMMENT '降级游标 平台索引:账号索引';
+ALTER TABLE `grab_config`
+  ADD COLUMN `combo_snapshot` TEXT NULL COMMENT '同门店所有组合快照JSON,供到点/降级重建组合';
+
