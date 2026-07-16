@@ -371,3 +371,11 @@ ALTER TABLE `grab_config`
   ADD COLUMN `promo_detail` varchar(64) NULL DEFAULT NULL COMMENT '活动快照: 优惠明细 如 满20返15',
   ADD COLUMN `start_time` varchar(8) NULL DEFAULT NULL COMMENT '活动快照: 时段开始 HH:MM',
   ADD COLUMN `end_time` varchar(8) NULL DEFAULT NULL COMMENT '活动快照: 时段结束 HH:MM';
+
+-- ============================
+-- 监控配置：启用抢单平台集合 (2026-07-17, task 07-17-multi-platform-grab)
+-- 多平台抢单：监控层勾选对哪些平台(1美团/2饿了么/3京东)命中时自动抢单。
+-- 默认 '1' 仅美团，向后兼容存量配置。饿了么/京东抢单走 OrderExchange 接口(见 XiaochanHttp)。
+-- ============================
+ALTER TABLE `monitor_config`
+  ADD COLUMN `grab_platforms` VARCHAR(64) NULL DEFAULT '1' COMMENT '启用抢单平台集合,逗号分隔(1美团/2饿了么/3京东),默认仅美团';

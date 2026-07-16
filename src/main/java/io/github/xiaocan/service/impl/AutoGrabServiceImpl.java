@@ -27,7 +27,7 @@ import java.util.concurrent.Executors;
 /**
  * 监控命中后自动建立抢单任务实现。
  *
- * 决策A：仅对美团(type=1)活动自动抢；非美团活动命中只通知不建任务。
+ * 决策A：仅对监控配置勾选的启用平台（grabPlatforms，默认仅美团）活动自动抢；未勾选平台命中只通知不建任务。
  *
  * 时间分支：
  *  - 未到点（now < start）：建定时任务(auto=0, executeAt=当天startTime)，注册 cron，进前端列表。
@@ -66,8 +66,10 @@ public class AutoGrabServiceImpl implements AutoGrabService {
         if (config == null || store == null) return null;
         // 1. 开关门禁
         if (!Boolean.TRUE.equals(config.getAutoGrab())) return null;
-        // 决策A：仅美团
-        if (store.getType() == null || store.getType() != PLATFORM_MEITUAN) return null;
+        // 平台门禁：仅对监控配置勾选的启用平台建抢单任务。
+        // 决策A（历史）曾硬编码仅美团；现按 config.grabPlatforms 集合判断（存量默认仅美团，向后兼容）。
+        java.util.Set<Integer> enabledPlatforms = parsePlatforms(config.getGrabPlatforms());
+        if (store.getType() == null || !enabledPlatforms.contains(store.getType())) return null;
         if (store.getPromotionId() == null) return null;
 
         Integer userId = config.getUserId();
@@ -190,7 +192,8 @@ public class AutoGrabServiceImpl implements AutoGrabService {
         entity.setLoginStateId(config.getGrabLoginStateId());
         entity.setLocationId(config.getLocationId());
         entity.setPromotionId(promotionId);
-        entity.setStorePlatform(1);
+        // 落命中活动的真实平台（1美团/2饿了么/3京东），不再恒为 1；type 理论非 null（L72 已过滤），显式兜底防隐性依赖 DB DEFAULT
+        entity.setStorePlatform(store.getType() == null ? 1 : store.getType());
         entity.setIfAdvanceOrder(false);
         entity.setLeadMs(0);
         entity.setEnableRetry(true);
@@ -203,6 +206,26 @@ public class AutoGrabServiceImpl implements AutoGrabService {
         entity.setStartTime(store.getStartTime());
         entity.setEndTime(store.getEndTime());
         return entity;
+    }
+
+    /**
+     * 解析监控配置的"启用抢单平台"集合。
+     * 存储为逗号分隔 int 串（如 "1,2"）；null/空 → {1}（默认仅美团，向后兼容存量配置）。
+     */
+    private java.util.Set<Integer> parsePlatforms(String grabPlatforms) {
+        java.util.Set<Integer> set = new java.util.HashSet<>();
+        if (grabPlatforms != null && !grabPlatforms.isBlank()) {
+            for (String s : grabPlatforms.split(",")) {
+                String t = s.trim();
+                if (!t.isEmpty()) {
+                    try {
+                        set.add(Integer.parseInt(t));
+                    } catch (NumberFormatException ignore) { /* 跳过非法值 */ }
+                }
+            }
+        }
+        if (set.isEmpty()) set.add(PLATFORM_MEITUAN); // 兜底：仅美团
+        return set;
     }
 
     /** 解析 "HH:MM" 为 LocalTime，失败回退到 fallback。 */

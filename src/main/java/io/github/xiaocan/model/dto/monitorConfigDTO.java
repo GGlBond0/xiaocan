@@ -68,5 +68,10 @@ public class monitorConfigDTO {
      * 自动抢单所用登录态id，指向 login_state.id（autoGrab=true 时必填）
      */
     private Integer grabLoginStateId;
+    /**
+     * 启用抢单的平台集合，逗号分隔 int（1美团/2饿了么/3京东，如 "1,2"）。
+     * null/空 → 仅美团。仅 autoGrab=true 时有意义。
+     */
+    private String grabPlatforms;
 
 }

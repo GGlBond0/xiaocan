@@ -167,11 +167,44 @@ public class XiaochanHttp {
         List<StoreInfo> storeInfos = parsePromotion(jsonObject.getJSONObject("promotion_detail"));
         return storeInfos.get(0);
     }
+
+    /**
+     * 获取活动详情中指定平台的快照。
+     * 多平台活动 detail 会解析出多个 StoreInfo（美团/饿了么/京东），按 targetPlatform(1/2/3) 匹配；
+     * 找不到时回退到第一个（兼容单平台活动）。
+     *
+     * @param promotionId    活动 id
+     * @param targetPlatform 目标平台（1美团/2饿了么/3京东）
+     */
+    public StoreInfo getStorePromotionDetail(Integer promotionId, Integer targetPlatform) {
+        Map<String, Integer> reqMap = Map.of("silk_id", 0,
+                "promotion_id", promotionId,
+                "app_id", 20);
+        String resBody = postWithRes(BASE_URL, JSONObject.toJSONString(reqMap), null, "Silkworm", "SilkwormService.GetStorePromotionDetail");
+        JSONObject jsonObject = checkResult(resBody);
+        List<StoreInfo> storeInfos = parsePromotion(jsonObject.getJSONObject("promotion_detail"));
+        if (targetPlatform != null) {
+            for (StoreInfo s : storeInfos) {
+                if (targetPlatform.equals(s.getType())) return s;
+            }
+        }
+        return storeInfos.get(0);
+    }
     /**
      * 抢单接口服务名/方法名
      */
     private static final String GRAB_SERVER_NAME = "Silkworm";
     private static final String GRAB_METHOD_NAME = "SilkwormService.GrabPromotionQuota";
+
+    /**
+     * 饿了么/京东抢单接口（与美团 GrabPromotionQuota 是两套独立契约）。
+     * servername=SilkwormCommunity, methodname=SilkwormMobileCommunityService.OrderExchange。
+     */
+    private static final String EXCHANGE_SERVER_NAME = "SilkwormCommunity";
+    private static final String EXCHANGE_METHOD_NAME = "SilkwormMobileCommunityService.OrderExchange";
+    /** 用户信息接口（取会员等级 new_level/is_plus，用于组装 OrderExchange 请求体） */
+    private static final String USERINFO_SERVER_NAME = "Silkworm";
+    private static final String USERINFO_METHOD_NAME = "SilkwormService.GetClientUserInfo";
 
     /**
      * 卡券查询接口服务名/方法名
@@ -228,6 +261,109 @@ public class XiaochanHttp {
         String resBody = postWithResAuth(BASE_URL, JSONObject.toJSONString(body), cityCode,
                 GRAB_SERVER_NAME, GRAB_METHOD_NAME, auth);
         return JSONObject.parseObject(resBody);
+    }
+
+    /**
+     * 饿了么/京东抢单：调用 SilkwormMobileCommunityService.OrderExchange。
+     * 请求体字段与美团 GrabPromotionQuota 完全不同（见 {@link OrderExchangeReq}），
+     * header/加密/代理机制相同（复用 postWithResAuth）。
+     *
+     * @param auth 登录态（X-Sivir/X-Teemo/X-Session-Id）
+     * @param req  OrderExchange 请求体（由 {@link #buildOrderExchangeReq} 组装）
+     * @return 小蚕原始响应 JSON，成功判据 status.code == 0
+     */
+    public JSONObject orderExchange(GrabAuth auth, OrderExchangeReq req) {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("silk_id", req.getSilkId());
+        body.put("new_level", req.getNewLevel());
+        body.put("is_plus", req.getIsPlus());
+        body.put("ingot", req.getIngot());
+        body.put("store_id", req.getStoreId());
+        body.put("store_type", req.getStoreType());
+        body.put("promotion_id", req.getPromotionId());
+        body.put("promotion_type", req.getPromotionType());
+        body.put("city_code", req.getCityCode());
+        body.put("is_super_brand", req.getIsSuperBrand());
+        body.put("promotion_silk_amount", req.getPromotionSilkAmount());
+        body.put("store_category_sub_type", req.getStoreCategorySubType());
+        body.put("store_category_type", req.getStoreCategoryType());
+        body.put("bwc_type", req.getBwcType());
+        body.put("store_platform_order_money", req.getStorePlatformOrderMoney());
+        body.put("bwc_platform", req.getBwcPlatform());
+        body.put("promotion_event_type", req.getPromotionEventType());
+        String resBody = postWithResAuth(BASE_URL, JSONObject.toJSONString(body), req.getCityCode(),
+                EXCHANGE_SERVER_NAME, EXCHANGE_METHOD_NAME, auth);
+        return JSONObject.parseObject(resBody);
+    }
+
+    /**
+     * 用户信息：调用 SilkwormService.GetClientUserInfo，取 vip_level_info.new_level/is_plus。
+     * 用于组装 OrderExchange 请求体（抢单前需拿到当前会员等级）。
+     *
+     * @return user_info.vip_level_info JSON；不存在返回 null
+     */
+    public JSONObject getClientUserInfoVipLevel(GrabAuth auth) {
+        Integer silkId = auth.getSilkId() == null ? 0 : auth.getSilkId();
+        Map<String, Object> body = new HashMap<>();
+        body.put("silk_id", silkId);
+        String resBody = postWithResAuth(BASE_URL, JSONObject.toJSONString(body), null,
+                USERINFO_SERVER_NAME, USERINFO_METHOD_NAME, auth);
+        JSONObject resp = JSONObject.parseObject(resBody);
+        JSONObject userInfo = resp.getJSONObject("user_info");
+        if (userInfo == null) return null;
+        return userInfo.getJSONObject("vip_level_info");
+    }
+
+    /**
+     * 用活动详情快照 + 登录态 + 会员等级 组装 OrderExchange 请求体。
+     * 待定字段（来源未完全定位，先以 HAR 样本占位，TODO 标注需按账号/活动验证后替换）：
+     *  - ingot（元宝余额，样本 600）：来源未定位，先固定 600 TODO
+     *  - store_type（样本 = bwc_platform）：暂按平台值占位 TODO
+     *  - store_category_type（样本 = store_category_sub_type）：暂同 sub_type TODO
+     *  - is_super_brand（样本 false）：先固定 false TODO
+     *  - bwc_type（样本 0）：先固定 0 TODO
+     *  - promotion_event_type（样本 null）：先固定 null
+     */
+    public OrderExchangeReq buildOrderExchangeReq(GrabAuth auth, StoreInfo store) {
+        Integer silkId = auth.getSilkId() == null ? 0 : auth.getSilkId();
+        // 抢单前取会员等级；取不到则用样本默认值占位
+        Integer newLevel = 2;
+        Boolean isPlus = false;
+        try {
+            JSONObject vip = getClientUserInfoVipLevel(auth);
+            if (vip != null) {
+                newLevel = vip.getInteger("new_level");
+                isPlus = vip.getBoolean("is_plus");
+                if (newLevel == null) newLevel = 2;
+                if (isPlus == null) isPlus = false;
+            }
+        } catch (Exception e) {
+            log.warn("取会员等级失败，用样本默认值占位 promotionId={}: {}", store.getPromotionId(), e.getMessage());
+        }
+        Integer bwcPlatform = store.getTpStorePlatform();
+        // 活动金额取原始整数（tp_order_money/tp_user_rebate 在响应里即为整数，如 2500/1000）
+        int platformOrderMoney = store.getStorePlatformOrderMoney() == null ? 0 : store.getStorePlatformOrderMoney().intValue();
+        int silkAmount = store.getPromotionSilkAmount() == null ? 0 : store.getPromotionSilkAmount().intValue();
+        return OrderExchangeReq.builder()
+                .silkId(silkId)
+                .newLevel(newLevel)
+                .isPlus(isPlus)
+                .ingot(600) // TODO 来源未定位，样本占位（HAR flow f30e26fd），需按账号验证
+                .storeId(store.getStoreId())
+                // store_type：HAR 京东样本 store_type=2=sub_type，饿了么样本 store_type=12=sub_type，三者相等，取 storeCategorySubType（非 bwc_platform）
+                .storeType(store.getStoreCategorySubType())
+                .promotionId(store.getPromotionId())
+                .promotionType(store.getPromotionType())
+                .cityCode(store.getCityCode())
+                .isSuperBrand(false) // TODO 来源未定位，样本占位（HAR 均为 false）
+                .promotionSilkAmount(silkAmount)
+                .storeCategorySubType(store.getStoreCategorySubType())
+                .storeCategoryType(store.getStoreCategorySubType()) // HAR：store_category_type = sub_type
+                .bwcType(0) // TODO 来源未定位，样本占位（HAR 均为 0）
+                .storePlatformOrderMoney(platformOrderMoney)
+                .bwcPlatform(bwcPlatform)
+                .promotionEventType(null)
+                .build();
     }
 
     /**
@@ -364,15 +500,20 @@ public class XiaochanHttp {
     private List<StoreInfo> parsePromotion(JSONObject jsonObject){
         List<StoreInfo> result = new ArrayList<>();
         StoreInfo storeInfo = new StoreInfo();
-        storeInfo.setName(jsonObject.getJSONObject("store").getString("name"));
-        storeInfo.setOpenHours(jsonObject.getJSONObject("store").getString("opening_hours"));
+        JSONObject store = jsonObject.getJSONObject("store");
+        storeInfo.setName(store.getString("name"));
+        storeInfo.setOpenHours(store.getString("opening_hours"));
         storeInfo.setPromotionId(jsonObject.getInteger("promotion_id"));
         storeInfo.setRebateCondition(jsonObject.getInteger("rebate_condition"));
         storeInfo.setStartTime(formatStartEndTime(jsonObject.getInteger("start_time_hour"), jsonObject.getInteger("start_time_minute")));
         storeInfo.setEndTime(formatStartEndTime(jsonObject.getInteger("end_time_hour") ,jsonObject.getInteger("end_time_minute")));
         storeInfo.setDistance(jsonObject.getInteger("distance") );
-        storeInfo.setIcon(jsonObject.getJSONObject("store").getString("icon") );
-        storeInfo.setStoreId(jsonObject.getJSONObject("store").getInteger("store_id") );
+        storeInfo.setIcon(store.getString("icon") );
+        storeInfo.setStoreId(store.getInteger("store_id") );
+        // 饿了么/京东 OrderExchange 所需活动属性（美团也可填充，仅饿了么/京东分支使用）
+        storeInfo.setPromotionType(jsonObject.getInteger("promotion_type"));
+        storeInfo.setCityCode(store.getInteger("city_code"));
+        storeInfo.setStoreCategorySubType(store.getInteger("store_category_sub_type"));
         //美团
         if (jsonObject.getInteger("meituan_status") == 1) {
             StoreInfo meituanStoreInfo = new StoreInfo();
@@ -383,7 +524,7 @@ public class XiaochanHttp {
             meituanStoreInfo.setRebatePrice(safeDivide(jsonObject.getBigDecimal("meituan_user_rebate"), BigDecimal.valueOf(100)));
             result.add(meituanStoreInfo);
         }
-        //饿了么
+        //饿了么（独立分支：eleme_status，无 tp_promotion 字段；OrderExchange 所需金额取 eleme_*）
         if (jsonObject.getInteger("eleme_status") == 1) {
             StoreInfo eleStoreInfo = new StoreInfo();
             BeanUtils.copyProperties(storeInfo, eleStoreInfo);
@@ -391,18 +532,27 @@ public class XiaochanHttp {
             eleStoreInfo.setLeftNumber(jsonObject.getInteger("eleme_left_number"));
             eleStoreInfo.setPrice(safeDivide(jsonObject.getBigDecimal("eleme_order_money"), BigDecimal.valueOf(100)));
             eleStoreInfo.setRebatePrice(safeDivide(jsonObject.getBigDecimal("eleme_user_rebate"),BigDecimal.valueOf(100)));
+            // OrderExchange 所需字段（饿了么 bwc_platform=2）
+            eleStoreInfo.setTpStorePlatform(2);
+            eleStoreInfo.setStorePlatformOrderMoney(jsonObject.getBigDecimal("eleme_order_money"));
+            eleStoreInfo.setPromotionSilkAmount(jsonObject.getBigDecimal("eleme_user_rebate"));
             result.add(eleStoreInfo);
         }
-        // 京东
+        // 京东（tp_promotion：第三方平台促销，store_platform 2=饿了么/3=京东）
         if (jsonObject.containsKey("tp_promotion")) {
             JSONObject tpPromotion = jsonObject.getJSONObject("tp_promotion");
             if (tpPromotion.getInteger("tp_status") == 1) {
                 StoreInfo eleStoreInfo = new StoreInfo();
                 BeanUtils.copyProperties(storeInfo, eleStoreInfo);
-                eleStoreInfo.setType(3);
+                Integer tpPlatform = tpPromotion.getInteger("store_platform");
+                eleStoreInfo.setType(tpPlatform); // 2 饿了么 / 3 京东
                 eleStoreInfo.setLeftNumber(tpPromotion.getInteger("tp_left_number"));
                 eleStoreInfo.setPrice(safeDivide(tpPromotion.getBigDecimal("tp_order_money"), BigDecimal.valueOf(100)));
                 eleStoreInfo.setRebatePrice(safeDivide(tpPromotion.getBigDecimal("tp_user_rebate"),BigDecimal.valueOf(100)));
+                // OrderExchange 所需的 tp_promotion 字段
+                eleStoreInfo.setTpStorePlatform(tpPlatform);
+                eleStoreInfo.setStorePlatformOrderMoney(tpPromotion.getBigDecimal("tp_order_money"));
+                eleStoreInfo.setPromotionSilkAmount(tpPromotion.getBigDecimal("tp_user_rebate"));
                 result.add(eleStoreInfo);
             }
         }

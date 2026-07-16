@@ -224,9 +224,12 @@ public class GrabServiceImpl extends ServiceImpl<GrabConfigMapper, GrabConfigEnt
 
         // 活动信息快照（商家名 + 优惠明细）。detail 不随重试变化，循环外只查一次；
         // 查询失败不影响抢单主流程，留空即可。
+        // 按目标平台查（多平台活动 detail 含多个 StoreInfo），饿了么/京东快照需带 tp_promotion 字段供 OrderExchange 组装。
+        Integer storePlatform = config.getStorePlatform() == null ? 1 : config.getStorePlatform();
+        boolean isMeituan = storePlatform == 1;
         StoreInfo promoSnapshot = null;
         try {
-            promoSnapshot = xiaochanHttp.getStorePromotionDetail(config.getPromotionId());
+            promoSnapshot = xiaochanHttp.getStorePromotionDetail(config.getPromotionId(), storePlatform);
         } catch (Exception e) {
             log.warn("查询活动详情失败 promotionId={}: {}", config.getPromotionId(), e.getMessage());
         }
@@ -246,10 +249,37 @@ public class GrabServiceImpl extends ServiceImpl<GrabConfigMapper, GrabConfigEnt
         int interval = config.getRetryIntervalMs() == null ? 500 : config.getRetryIntervalMs();
 
         GrabResultVO finalResult = null;
+        // 饿了么/京东 OrderExchange 请求体组装一次即可（依赖活动详情快照 + 会员等级，重试不变）。
+        io.github.xiaocan.http.OrderExchangeReq exchangeReq = null;
+        if (!isMeituan) {
+            if (promoSnapshot == null || promoSnapshot.getTpStorePlatform() == null) {
+                // 活动详情缺失或非饿了么/京东活动，无法组装 OrderExchange 请求体
+                result.setSuccess(false);
+                result.setCode(-1);
+                result.setMsg("活动详情缺失，无法发起饿了么/京东抢单");
+                saveHistory(config, user.getId(), false, -1, "活动详情缺失，无法发起饿了么/京东抢单", null, 1, triggerType, storeName, promoDetail);
+                push(config, user, "抢单失败", buildPushPrefix(config, storeName, promoDetail) + " 活动详情缺失，无法发起抢单");
+                return result;
+            }
+            try {
+                exchangeReq = xiaochanHttp.buildOrderExchangeReq(auth, promoSnapshot);
+            } catch (Exception e) {
+                log.error("组装 OrderExchange 请求体异常 configId={}", config.getId(), e);
+                result.setSuccess(false);
+                result.setCode(-1);
+                result.setMsg("组装抢单请求异常:" + e.getMessage());
+                saveHistory(config, user.getId(), false, -1, "组装抢单请求异常:" + e.getMessage(), null, 1, triggerType, storeName, promoDetail);
+                return result;
+            }
+        }
         for (int attempt = 1; attempt <= maxRetry; attempt++) {
             JSONObject resp;
             try {
-                resp = xiaochanHttp.grabPromotionQuota(auth, cityCode, lat, lng, config.getPromotionId());
+                if (isMeituan) {
+                    resp = xiaochanHttp.grabPromotionQuota(auth, cityCode, lat, lng, config.getPromotionId());
+                } else {
+                    resp = xiaochanHttp.orderExchange(auth, exchangeReq);
+                }
             } catch (Exception e) {
                 log.error("抢单请求异常 configId={}", config.getId(), e);
                 saveHistory(config, user.getId(), false, -1, "请求异常:" + e.getMessage(), null, attempt, triggerType, storeName, promoDetail);
@@ -260,8 +290,9 @@ public class GrabServiceImpl extends ServiceImpl<GrabConfigMapper, GrabConfigEnt
             JSONObject status = resp.getJSONObject("status");
             int code = status != null ? status.getIntValue("code") : -1;
             String msg = status != null ? status.getString("msg") : "";
+            // 美团：成功需 code==0 且 promotion_order_id 非空；饿了么/京东 OrderExchange 响应无 promotion_order_id，成功仅看 code==0
             Long orderId = resp.getLong("promotion_order_id");
-            boolean success = (code == 0 && orderId != null);
+            boolean success = isMeituan ? (code == 0 && orderId != null) : (code == 0);
             saveHistory(config, user.getId(), success, code, msg, orderId, attempt, triggerType, storeName, promoDetail);
 
             finalResult = new GrabResultVO();
@@ -273,12 +304,13 @@ public class GrabServiceImpl extends ServiceImpl<GrabConfigMapper, GrabConfigEnt
             if (success) {
                 this.lambdaUpdate().eq(GrabConfigEntity::getId, config.getId())
                         .set(GrabConfigEntity::getPromotionOrderId, orderId)
-                        .set(GrabConfigEntity::getLastResult, "成功 orderId=" + orderId)
+                        .set(GrabConfigEntity::getLastResult, isMeituan ? ("成功 orderId=" + orderId) : "成功")
                         .set(GrabConfigEntity::getLastGrabTime, LocalDateTime.now())
                         .set(GrabConfigEntity::getStatus, MonitorConfigStatusEnums.DISABLE)
                         .update();
                 grabCronScheduler.cancel(config.getId());
-                push(config, user, "抢单成功", buildPushPrefix(config, storeName, promoDetail) + " 抢到，订单号 " + orderId);
+                String okMsg = isMeituan ? (" 抢到，订单号 " + orderId) : " 抢到";
+                push(config, user, "抢单成功", buildPushPrefix(config, storeName, promoDetail) + okMsg);
                 break;
             }
             if (code != 4) {

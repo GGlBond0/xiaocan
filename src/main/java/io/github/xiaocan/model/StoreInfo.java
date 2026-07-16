@@ -75,4 +75,36 @@ public class StoreInfo {
      */
     private String icon;
 
+    // ====== 饿了么/京东 OrderExchange 抢单接口所需的活动详情字段 ======
+    // 现有美团走 GrabPromotionQuota（仅需 lat/lng/promotion_id），饿了么/京东走
+    // SilkwormMobileCommunityService.OrderExchange，请求体需要下列活动属性。
+    // 来源见 prd.md V2 / design.md D2（HAR 2026-07-17，flow f30e26fd / 5b0383d5 / 2b8c1da7）。
+    // 部分字段来源未完全定位，先以样本占位（见 XiaochanHttp.buildOrderExchangeReq）。
+
+    /**
+     * 活动 promotion_type（promotion_detail.promotion_type）
+     */
+    private Integer promotionType;
+    /**
+     * 城市 city_code（promotion_detail.store.city_code）
+     */
+    private Integer cityCode;
+    /**
+     * 第三方平台 store_platform（tp_promotion.store_platform；1美团/2饿了么/3京东）。
+     * 仅饿了么/京东活动有 tp_promotion 时填充，美团为 null。
+     */
+    private Integer tpStorePlatform;
+    /**
+     * 平台订单金额（tp_promotion.tp_order_money，单位分）
+     */
+    private BigDecimal storePlatformOrderMoney;
+    /**
+     * 平台返利金额（tp_promotion.tp_user_rebate，单位分）
+     */
+    private BigDecimal promotionSilkAmount;
+    /**
+     * 门店类目子类型（store.store_category_sub_type）
+     */
+    private Integer storeCategorySubType;
+
 }
