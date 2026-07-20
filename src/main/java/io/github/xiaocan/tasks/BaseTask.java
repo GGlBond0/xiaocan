@@ -115,10 +115,12 @@ public class BaseTask {
             }
             execHistory.setNotifyStoreCount(availableStores.size());
             log.info("configId: {} 找到{}个满足条件的门店活动", notifyConfig.getId(), availableStores.size());
-            savePushedHistory(notifyConfig, availableStores);
             afterSuccess(notifyConfig, availableStores);
             //通知
             sendMessage(notifyConfig, availableStores, location);
+            // 推送成功后再写历史：推送失败则不写，下次 cron 该活动在去重窗口内仍可再推（自然重试），
+            // 避免旧实现「先写历史后推送、推送失败导致窗口内不再推送」的漏推问题。
+            savePushedHistory(notifyConfig, availableStores);
             // 监控命中后自动建立抢单任务（仅开启 autoGrab 的配置；AutoGrabService 内部按美团/防重/登录态/时间门禁）
             triggerAutoGrab(notifyConfig, availableStores);
         }catch (Exception e){

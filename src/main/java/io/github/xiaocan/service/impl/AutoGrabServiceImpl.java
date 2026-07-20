@@ -437,7 +437,11 @@ public class AutoGrabServiceImpl implements AutoGrabService {
                     .set(GrabConfigEntity::getLastResult, "失败:code=" + code + "," + msg)
                     .set(GrabConfigEntity::getLastGrabTime, LocalDateTime.now())
                     .update();
-        } catch (Exception ignore) { /* 尽力而为 */ }
+        } catch (Exception e) {
+            // 回写失败时占位不会被标记已消费，下次 hasPlaceholder 会误判跳过该账号同活动。
+            // 至少 log.warn 可观测，便于排查；后续可考虑重试或补偿机制。
+            log.warn("markConsumed 回写失败 configId={}: {}", configId, e.getMessage());
+        }
     }
 
     /** 组装 grab_config 基础字段 + 活动快照（复用 GrabServiceImpl 默认值约定）。 */
