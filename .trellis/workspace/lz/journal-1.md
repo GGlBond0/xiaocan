@@ -950,3 +950,38 @@ B-4:XiaoChanServiceImpl distance null用nullsLast+name null防御(3处)。B-6:Pr
 ### Next Steps
 
 - None - task complete
+
+
+## Session 28: 霸王餐开红包功能与WAF风控处理
+
+**Date**: 2026-07-21
+**Task**: 霸王餐开红包功能与WAF风控处理
+**Branch**: `main`
+
+### Summary
+
+实现开红包(执行抽奖 SilkwormLotteryMobile.Lottery)，实测发现后端批量调 gwh 会触发腾讯云 WAF 封账号 App 端、抽奖被防水墙要求验证。加 WAF 403 识别(isWafBlock 不重试)。最终拆成刷任务/开红包/领累计奖励三个独立单账号按钮(后端 commit 063bc81 + 前端 xiaocan-front a3363f2)，各自带间隔降风控，已部署。关键教训：运行期现象先 SSH 读远端日志，别用接口返回废值臆测。
+
+### Main Changes
+
+- Detailed change bullets were not supplied; see the summary above.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `37a3418` | (see git log) |
+| `a52f230` | (see git log) |
+| `063bc81` | (see git log) |
+
+### Testing
+
+- Validation was not recorded for this session.
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
