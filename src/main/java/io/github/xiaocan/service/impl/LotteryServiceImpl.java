@@ -7,6 +7,7 @@ import io.github.xiaocan.http.LotteryHttp;
 import io.github.xiaocan.model.entity.LoginStateEntity;
 import io.github.xiaocan.model.entity.UserEntity;
 import io.github.xiaocan.model.vo.LotteryDrawResultVO;
+import io.github.xiaocan.model.vo.LotteryStepPrizeResultVO;
 import io.github.xiaocan.model.vo.LotteryTaskResultVO;
 import io.github.xiaocan.service.LotteryService;
 import io.github.xiaocan.service.UserService;
@@ -63,6 +64,13 @@ public class LotteryServiceImpl implements LotteryService {
 
     private final LotteryHttp lotteryHttp = new LotteryHttp();
 
+    /** 单账号内刷任务间隔：每两个实际发请求的任务之间 sleep（降 WAF 风控） */
+    private static final long TASK_INTERVAL_MS = 40_000L;
+    /** 账号内领阶梯奖 step1→step2 间隔 */
+    private static final long ACCOUNT_INTERVAL_MS = 10_000L;
+    /** 单账号内开红包间隔：每次抽奖之间 sleep */
+    private static final long DRAW_INTERVAL_MS = 10_000L;
+
     @Resource
     private io.github.xiaocan.service.LoginStateService loginStateService;
     @Resource
@@ -70,7 +78,13 @@ public class LotteryServiceImpl implements LotteryService {
 
     @Override
     public LotteryTaskResultVO runTask(Integer authId) {
-        AuthBundle bundle = resolveAuth(authId);
+        return runTaskInternal(resolveAuth(authId));
+    }
+
+    /**
+     * runTask 内部版：接收已解析的 auth（后台线程无 HTTP 上下文，不能调 resolveAuth）。
+     */
+    private LotteryTaskResultVO runTaskInternal(AuthBundle bundle) {
         LoginStateEntity entity = bundle.entity;
         LotteryAuth auth = bundle.auth;
 
@@ -97,7 +111,7 @@ public class LotteryServiceImpl implements LotteryService {
                 vo.setBeforeDayNum(li == null ? null : li.getInteger("day_num"));
             } catch (Exception e) {
                 // lotteryInfo 都失败 → 代理完全不可用，记录 error 并直接结束（无明细可填）
-                log.error("刷霸王餐 lotteryInfo 失败 authId={}", authId, e);
+                log.error("刷霸王餐 lotteryInfo 失败 auth={}", auth.getSilkId(), e);
                 vo.setError(friendlyMsg(e.getMessage(), -1));
                 return vo;
             }
@@ -112,7 +126,7 @@ public class LotteryServiceImpl implements LotteryService {
 
                 Boolean done = li == null ? null : li.getBoolean(flag);
                 if (Boolean.TRUE.equals(done)) {
-                    // 已完成，跳过未调用
+                    // 已完成，跳过未调用（不计间隔）
                     item.setStatus(LotteryTaskResultVO.TaskStatus.SKIPPED);
                     item.setOk(false);
                     item.setMsg("已完成");
@@ -137,23 +151,17 @@ public class LotteryServiceImpl implements LotteryService {
                     log.warn("addLotteryTimes type={} 异常: {}", type, e.getMessage());
                 }
                 items.add(item);
+                // 实际发了上游请求 → 账号内任务间间隔 40s（降 WAF 风控）
+                sleepBetween(TASK_INTERVAL_MS);
             }
 
-            // 3.5) 看视频/看商城（OnAdViewed，独立于 AddLotteryTimes，带 HMAC sign）
+            // 3.5) 看视频/看商城（OnAdViewed，独立于 AddLotteryTimes，带 HMAC sign，内部调用后 sleep 40s）
             addAdViewTask(items, li, auth, "is_view_tp_ad", LotteryHttp.BUS_TYPE_VIEW_TP_AD, "看视频");
+            sleepBetween(TASK_INTERVAL_MS);
             addAdViewTask(items, li, auth, "is_view_douyin_mall", LotteryHttp.BUS_TYPE_VIEW_DOUYIN_MALL, "看商城");
+            sleepBetween(TASK_INTERVAL_MS);
 
-            // 3.6) 领累计抽奖阶梯奖（ReceiveExtraLottery）——需取刷后最新 lottery_count
-            try {
-                JSONObject progress = lotteryHttp.getLotteryProgress(auth);
-                JSONObject lp = progress == null ? null : progress.getJSONObject("lottery_progress");
-                if (lp != null) {
-                    addStepPrizeTask(items, lp, auth, 1, "first", "领第一阶梯奖", TYPE_CLAIM_FIRST_STEP);
-                    addStepPrizeTask(items, lp, auth, 2, "second", "领第二阶梯奖", TYPE_CLAIM_SECOND_STEP);
-                }
-            } catch (Exception e) {
-                log.warn("领阶梯奖 getLotteryProgress 失败（不影响明细）: {}", e.getMessage());
-            }
+            // 3.6) 领累计阶梯奖移到批量编排阶段3（runAll），runTask 不再领，避免重复。
 
             // 4) 刷后快照（统计数字，失败不丢明细，独立 try）
             try {
@@ -166,7 +174,7 @@ public class LotteryServiceImpl implements LotteryService {
                 log.warn("刷后快照失败（不影响明细）: {}", e.getMessage());
             }
         } catch (Exception e) {
-            log.error("刷霸王餐浏览任务失败 authId={}", authId, e);
+            log.error("刷霸王餐浏览任务失败 silk_id={}", auth.getSilkId(), e);
             vo.setError(friendlyMsg(e.getMessage(), -1));
         }
         return vo;
@@ -177,7 +185,13 @@ public class LotteryServiceImpl implements LotteryService {
 
     @Override
     public LotteryDrawResultVO draw(Integer authId) {
-        AuthBundle bundle = resolveAuth(authId);
+        return drawInternal(resolveAuth(authId));
+    }
+
+    /**
+     * draw 内部版：接收已解析的 auth（后台线程无 HTTP 上下文）。
+     */
+    private LotteryDrawResultVO drawInternal(AuthBundle bundle) {
         LoginStateEntity entity = bundle.entity;
         LotteryAuth auth = bundle.auth;
 
@@ -216,6 +230,10 @@ public class LotteryServiceImpl implements LotteryService {
                 log.warn("lottery 第{}次异常: {}", i + 1, e.getMessage());
                 break;
             }
+            // 账号内开红包间隔 10s（非最后一次）
+            if (i < n - 1) {
+                sleepBetween(DRAW_INTERVAL_MS);
+            }
         }
 
         // 开后快照：失败 afterCount=null
@@ -225,6 +243,97 @@ public class LotteryServiceImpl implements LotteryService {
             log.warn("开红包后 getLotteryProgress 失败（不影响明细）: {}", e.getMessage());
         }
         return vo;
+    }
+
+    @Override
+    public LotteryStepPrizeResultVO claimStep(Integer authId) {
+        AuthBundle bundle = resolveAuth(authId);
+        LotteryStepPrizeResultVO vo = new LotteryStepPrizeResultVO();
+        vo.setAuthName(bundle.entity.getName());
+        try {
+            vo.setItems(claimStepPrizes(bundle));
+        } catch (Exception e) {
+            log.error("领累计奖励失败 silk_id={}", bundle.auth.getSilkId(), e);
+            vo.setError(friendlyMsg(e.getMessage(), -1));
+        }
+        return vo;
+    }
+
+    /**
+     * 领累计阶梯奖 step1/step2，step 间 10s。返回明细列表（step1/step2）。
+     * SKIPPED（已领取/未达阈值）不调不发请求；实际调用 receiveExtraLottery 后 step1→step2 间隔 10s。
+     */
+    private List<LotteryStepPrizeResultVO.StepPrizeItem> claimStepPrizes(AuthBundle bundle) {
+        LotteryAuth auth = bundle.auth;
+        List<LotteryStepPrizeResultVO.StepPrizeItem> list = new ArrayList<>();
+        JSONObject progress;
+        JSONObject lp;
+        try {
+            progress = lotteryHttp.getLotteryProgress(auth);
+            lp = progress == null ? null : progress.getJSONObject("lottery_progress");
+        } catch (Exception e) {
+            log.warn("领阶梯奖 getLotteryProgress 失败 silk_id={}: {}", auth.getSilkId(), e.getMessage());
+            LotteryStepPrizeResultVO.StepPrizeItem it = new LotteryStepPrizeResultVO.StepPrizeItem();
+            it.setOk(false);
+            it.setMsg(friendlyMsg(e.getMessage(), -1));
+            list.add(it);
+            return list;
+        }
+        if (lp == null) {
+            LotteryStepPrizeResultVO.StepPrizeItem it = new LotteryStepPrizeResultVO.StepPrizeItem();
+            it.setOk(false);
+            it.setMsg("无法获取抽奖进度");
+            list.add(it);
+            return list;
+        }
+        for (int step = 1; step <= 2; step++) {
+            String prefix = step == 1 ? "first" : "second";
+            int count = lp.getIntValue("lottery_count");
+            int stepCount = lp.getIntValue(prefix + "_step_count");
+            boolean got = lp.getBooleanValue("has_got_" + prefix + "_step_prize");
+            LotteryStepPrizeResultVO.StepPrizeItem item = new LotteryStepPrizeResultVO.StepPrizeItem();
+            item.setStep(step);
+            if (got) {
+                item.setOk(false);
+                item.setMsg("已领取");
+            } else if (count < stepCount) {
+                item.setOk(false);
+                item.setMsg("未达阶梯阈值");
+            } else {
+                try {
+                    JSONObject r = lotteryHttp.receiveExtraLottery(auth, step);
+                    int code = codeOf(r);
+                    boolean ok = code == 0;
+                    item.setOk(ok);
+                    if (!ok) {
+                        item.setMsg(friendlyMsg(msgOf(r), code));
+                    }
+                } catch (Exception e) {
+                    item.setOk(false);
+                    item.setMsg(friendlyMsg(e.getMessage(), -1));
+                    log.warn("receiveExtraLottery step={} 异常: {}", step, e.getMessage());
+                }
+            }
+            list.add(item);
+            // step1↔step2 间隔 10s
+            if (step == 1) {
+                sleepBetween(ACCOUNT_INTERVAL_MS);
+            }
+        }
+        return list;
+    }
+
+    /**
+     * 间隔 sleep 工具：降 WAF 风控。InterruptedException 恢复中断标志。
+     */
+    private void sleepBetween(long ms) {
+        try {
+            log.info("间隔 sleep {}ms（降风控）", ms);
+            Thread.sleep(ms);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            log.warn("间隔 sleep 被中断");
+        }
     }
 
     /**

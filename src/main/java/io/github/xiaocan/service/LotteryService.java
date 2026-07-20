@@ -1,6 +1,7 @@
 package io.github.xiaocan.service;
 
 import io.github.xiaocan.model.vo.LotteryDrawResultVO;
+import io.github.xiaocan.model.vo.LotteryStepPrizeResultVO;
 import io.github.xiaocan.model.vo.LotteryTaskResultVO;
 
 /**
@@ -19,4 +20,11 @@ public interface LotteryService {
      * @param authId 登录态 id
      */
     LotteryDrawResultVO draw(Integer authId);
+
+    /**
+     * 领累计抽奖阶梯奖（ReceiveExtraLottery step1/step2，独立按钮触发）。
+     *
+     * @param authId 登录态 id
+     */
+    LotteryStepPrizeResultVO claimStep(Integer authId);
 }
