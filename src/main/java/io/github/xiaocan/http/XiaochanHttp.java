@@ -164,8 +164,10 @@ public class XiaochanHttp {
                 "app_id", 20);
         String resBody = postWithRes(BASE_URL, JSONObject.toJSONString(reqMap), null, "Silkworm", "SilkwormService.GetStorePromotionDetail");
         JSONObject jsonObject = checkResult(resBody);
-        List<StoreInfo> storeInfos = parsePromotion(jsonObject.getJSONObject("promotion_detail"));
-        return storeInfos.get(0);
+        JSONObject detail = jsonObject.getJSONObject("promotion_detail");
+        if (detail == null) return null;
+        List<StoreInfo> storeInfos = parsePromotion(detail);
+        return storeInfos.isEmpty() ? null : storeInfos.get(0);
     }
 
     /**
@@ -182,7 +184,10 @@ public class XiaochanHttp {
                 "app_id", 20);
         String resBody = postWithRes(BASE_URL, JSONObject.toJSONString(reqMap), null, "Silkworm", "SilkwormService.GetStorePromotionDetail");
         JSONObject jsonObject = checkResult(resBody);
-        List<StoreInfo> storeInfos = parsePromotion(jsonObject.getJSONObject("promotion_detail"));
+        JSONObject detail = jsonObject.getJSONObject("promotion_detail");
+        if (detail == null) return null;
+        List<StoreInfo> storeInfos = parsePromotion(detail);
+        if (storeInfos.isEmpty()) return null;
         if (targetPlatform != null) {
             for (StoreInfo s : storeInfos) {
                 if (targetPlatform.equals(s.getType())) return s;
@@ -420,9 +425,11 @@ public class XiaochanHttp {
 
     private List<AddressVO> parseBodyToAddress(String body) {
         JSONObject jsonObject = JSONObject.parseObject(body);
-        if (jsonObject.getJSONObject("status").getInteger("code") != 0) {
+        JSONObject status = jsonObject == null ? null : jsonObject.getJSONObject("status");
+        Integer code = status == null ? null : status.getInteger("code");
+        if (code == null || code != 0) {
             log.error("parseBodyToAddress error body: {} ", body);
-            throw new BusinessException("状态码错误:" + jsonObject.getJSONObject("status").getInteger("code"));
+            throw new BusinessException("状态码错误:" + (code == null ? "无status节点" : code));
         }
         JSONArray jsonArray = jsonObject.getJSONArray("result");
         List<AddressVO> result = new ArrayList<>();
@@ -499,8 +506,13 @@ public class XiaochanHttp {
 
     private List<StoreInfo> parsePromotion(JSONObject jsonObject){
         List<StoreInfo> result = new ArrayList<>();
-        StoreInfo storeInfo = new StoreInfo();
         JSONObject store = jsonObject.getJSONObject("store");
+        if (store == null) {
+            // 上游缺 store 节点：该条 promotion 无法解析，跳过（不致整批 NPE）
+            log.warn("parsePromotion 缺 store 节点，跳过该条 promotion: {}", jsonObject.getString("promotion_id"));
+            return result;
+        }
+        StoreInfo storeInfo = new StoreInfo();
         storeInfo.setName(store.getString("name"));
         storeInfo.setOpenHours(store.getString("opening_hours"));
         storeInfo.setPromotionId(jsonObject.getInteger("promotion_id"));
@@ -514,8 +526,8 @@ public class XiaochanHttp {
         storeInfo.setPromotionType(jsonObject.getInteger("promotion_type"));
         storeInfo.setCityCode(store.getInteger("city_code"));
         storeInfo.setStoreCategorySubType(store.getInteger("store_category_sub_type"));
-        //美团
-        if (jsonObject.getInteger("meituan_status") == 1) {
+        //美团（null 安全比较：meituan_status 缺字段视为该平台不命中）
+        if (Integer.valueOf(1).equals(jsonObject.getInteger("meituan_status"))) {
             StoreInfo meituanStoreInfo = new StoreInfo();
             BeanUtils.copyProperties(storeInfo, meituanStoreInfo);
             meituanStoreInfo.setType(1);
@@ -525,7 +537,7 @@ public class XiaochanHttp {
             result.add(meituanStoreInfo);
         }
         //饿了么（独立分支：eleme_status，无 tp_promotion 字段；OrderExchange 所需金额取 eleme_*）
-        if (jsonObject.getInteger("eleme_status") == 1) {
+        if (Integer.valueOf(1).equals(jsonObject.getInteger("eleme_status"))) {
             StoreInfo eleStoreInfo = new StoreInfo();
             BeanUtils.copyProperties(storeInfo, eleStoreInfo);
             eleStoreInfo.setType(2);
@@ -541,7 +553,8 @@ public class XiaochanHttp {
         // 京东（tp_promotion：第三方平台促销，store_platform 2=饿了么/3=京东）
         if (jsonObject.containsKey("tp_promotion")) {
             JSONObject tpPromotion = jsonObject.getJSONObject("tp_promotion");
-            if (tpPromotion.getInteger("tp_status") == 1) {
+            // tp_status null 安全比较：缺字段视为该平台不命中
+            if (tpPromotion != null && Integer.valueOf(1).equals(tpPromotion.getInteger("tp_status"))) {
                 StoreInfo eleStoreInfo = new StoreInfo();
                 BeanUtils.copyProperties(storeInfo, eleStoreInfo);
                 Integer tpPlatform = tpPromotion.getInteger("store_platform");
@@ -561,8 +574,14 @@ public class XiaochanHttp {
 
     private JSONObject checkResult(String body){
         JSONObject jsonBody = JSONObject.parseObject(body);
-        if (jsonBody.getJSONObject("status").getInteger("code") != 0) {
-            String msg = jsonBody.getJSONObject("status").getString("msg");
+        JSONObject status = jsonBody == null ? null : jsonBody.getJSONObject("status");
+        if (status == null) {
+            log.error("请求失败(无status节点): {}", body);
+            throw new BusinessException("请求失败:无status节点");
+        }
+        Integer code = status.getInteger("code");
+        if (code == null || code != 0) {
+            String msg = status.getString("msg");
             log.error("请求失败: {}", body);
             throw new BusinessException("请求失败:" + msg);
         }
