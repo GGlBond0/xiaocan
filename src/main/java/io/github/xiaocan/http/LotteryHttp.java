@@ -73,6 +73,17 @@ public class LotteryHttp {
     }
 
     /**
+     * 判定响应 body 是否为腾讯云 WAF 拦截页（2026-07-21 抓包确认，gwh 端点被 WAF 封时返回 HTML 含特征）。
+     * 抓包样本：`<title>WAF拦截页面</title>` + `block-pages/403/main.css`。
+     */
+    private static boolean isWafBlock(String body) {
+        if (body == null || body.isEmpty()) {
+            return false;
+        }
+        return body.contains("WAF拦截") || body.contains("block-pages/403") || body.contains("WAF");
+    }
+
+    /**
      * 生成 X-Nami：UUID 去横线后插入 silk_id，凑成 16 位 hex（与 XiaochanHttp.getNami 同算法）。
      */
     private static String getNami(String silkId) {
@@ -216,6 +227,17 @@ public class LotteryHttp {
                 fail.put("status", st);
                 return fail;
             }
+            if (status == 403 && isWafBlock(rb)) {
+                // 2026-07-21：WAF 按"账号+端点"封，换代理无效只会放大请求量加重封禁。
+                // 直接返回结构化失败，不抛异常、不重试。详见 .trellis/tasks/07-21-lottery-waf-guard/。
+                log.error("{} 403 WAF风控拦截（账号已被封，停止请求）: {}", tag, rb.substring(0, Math.min(rb.length(), 120)));
+                JSONObject fail = new JSONObject();
+                JSONObject st = new JSONObject();
+                st.put("code", 403);
+                st.put("msg", "账号已被WAF风控，请暂停操作");
+                fail.put("status", st);
+                return fail;
+            }
             log.error("{} 状态码错误: {}, body: {}", tag, status, rb);
             throw new BusinessException("状态码错误:" + status);
         }
@@ -250,7 +272,13 @@ public class LotteryHttp {
                 continue;
             }
             if (response.getStatus() == 403) {
-                // 403 = 代理被风控/封禁，换代理重试
+                // 2026-07-21：403 多为 WAF 账号级封禁（按账号+端点封，换代理无效）。
+                // 判定为 WAF 拦截则直接返回不重试（避免换代理放大请求量加重封禁）；
+                // 非判定 WAF 的 403 保留原换代理逻辑（代理坏的情况）。
+                if (isWafBlock(response.body())) {
+                    log.warn("{} 经代理 {}:{} 返回 403 WAF风控，停止重试（账号级封禁）", tag, proxy[0], proxy[1]);
+                    return response;
+                }
                 log.warn("{} 经代理 {}:{} 返回 403，换代理重试({}/{})", tag, proxy[0], proxy[1], i + 1, retry);
                 response.close();
                 ProxyHolder.invalidate();

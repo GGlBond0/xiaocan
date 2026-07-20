@@ -24,7 +24,9 @@ public class LotteryController {
      */
     @PostMapping("/run")
     public BaseResult<LotteryTaskResultVO> runTask(@RequestParam Integer authId) {
-        return BaseResult.ok(lotteryService.runTask(authId));
+        // 2026-07-21：183 账号 gwh 端点被 WAF 风控拦截（runTask 大量 addLotteryTimes/onAdViewed 触发），
+        // 暂停 gwh 调用避免加重封禁、连累其他账号。详见 .trellis/tasks/07-21-lottery-waf-guard/。
+        return BaseResult.error("抽奖刷任务服务暂停（账号 WAF 风控规避中）");
     }
 
     /**
@@ -32,6 +34,7 @@ public class LotteryController {
      */
     @PostMapping("/draw")
     public BaseResult<LotteryDrawResultVO> draw(@RequestParam Integer authId) {
-        return BaseResult.ok(lotteryService.draw(authId));
+        // 2026-07-21：同 runTask，暂停 gwh 调用（WAF 风控规避中）。
+        return BaseResult.error("开红包服务暂停（账号 WAF 风控规避中）");
     }
 }
