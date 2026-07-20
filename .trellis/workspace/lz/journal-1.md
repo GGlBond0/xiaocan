@@ -814,3 +814,36 @@ A-1/2/3:XiaochanHttp parsePromotion/checkResult/parseBodyToAddress null防御+ge
 ### Next Steps
 
 - None - task complete
+
+
+## Session 24: 推送顺序+markConsumed可观测(A-4/A-5)
+
+**Date**: 2026-07-20
+**Task**: 推送顺序+markConsumed可观测(A-4/A-5)
+**Branch**: `main`
+
+### Summary
+
+A-4:BaseTask savePushedHistory移到sendMessage成功后,推送失败不写历史下次可再推。A-5:markConsumed catch ignore改log.warn可观测。A-7核实后不改(前端已正确显示+日志可观测,改success反丢per-task详情)。jar部署上线22:54 MD5一致服务active。
+
+### Main Changes
+
+- Detailed change bullets were not supplied; see the summary above.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `b89257f3909dde6f26a614fdcea3f722fe7b3cbd` | (see git log) |
+
+### Testing
+
+- Validation was not recorded for this session.
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
