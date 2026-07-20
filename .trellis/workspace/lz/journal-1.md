@@ -781,3 +781,36 @@ A-6:删XiaoChanController apply/book/ignore三空接口+BookVO/IgnoreStoreVO+前
 ### Next Steps
 
 - None - task complete
+
+
+## Session 23: XiaochanHttp NPE防御+MonitoryConfig事务
+
+**Date**: 2026-07-20
+**Task**: XiaochanHttp NPE防御+MonitoryConfig事务
+**Branch**: `main`
+
+### Summary
+
+A-1/2/3:XiaochanHttp parsePromotion/checkResult/parseBodyToAddress null防御+getStorePromotionDetail空list返回null。A-8:MonitoryConfig 5方法加@Transactional+scheduler refresh/cancel改afterCommit推迟到提交后(避免简单加事务致refresh读旧配置的新坑)。两任务编译通过,jar gzip+scp部署上线22:46,线上javap确认afterCommit helper存在,服务active,3个cron任务正常注册。
+
+### Main Changes
+
+- Detailed change bullets were not supplied; see the summary above.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `48aa49afcfdb1486d1047004f3c38f0366459670` | (see git log) |
+
+### Testing
+
+- Validation was not recorded for this session.
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
