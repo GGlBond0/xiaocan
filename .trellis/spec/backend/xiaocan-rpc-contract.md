@@ -163,24 +163,38 @@ headers.put("X-Sivir", auth.getSivir());  // 必填
 | methodName | body | 用途 |
 |---|---|---|
 | `SilkwormLotteryMobile.LotteryInfo` | {silk_id} | 查机会来源（is_view_xxx 未完成项 + day_num + is_add_times + lottery_times） |
-| `SilkwormLotteryMobile.AddLotteryTimes` | {silk_id,type} | 完成浏览任务 +1 机会（无验证） |
-| `SilkwormLotteryMobile.GetLotteryProgress` | {silk_id} | 查 lottery_count + 阶梯 first/second_step_count |
+| `SilkwormLotteryMobile.AddLotteryTimes` | {silk_id,type} | 完成浏览任务 +1 机会（无验证，type 2/8/9/10/11） |
+| `SilkwormLotteryMobile.OnAdViewed` | {silk_id,timestamp(秒),nonce,bus_type,sign} | 看视频/看商城完成上报 +1 机会（带 HMAC sign，2026-07-20 逆向） |
+| `SilkwormLotteryMobile.ReceiveExtraLottery` | {silk_id,step} | 领累计阶梯奖（step=1 first，step=2 second；40043=已领） |
+| `SilkwormLotteryMobile.GetLotteryProgress` | {silk_id} | 查 lottery_count + 阶梯 first/second_step_count + has_got_*_step_prize |
 | `SilkwormLotteryMobile.Lottery` | {silk_id,prize_type} | 执行抽奖（被 TCaptcha 挡，本模块不调） |
 | `SilkwormLotteryMobile.IsShowStepLottery` | {silk_id} | 是否显示阶梯抽奖（展示） |
 | `InviteWordService.CreateLeaderInviteWord` | {silk_id,leader_invite_type,source} | 分享海报前置（type=2 前置，实现时验证是否必要） |
 
-### AddLotteryTimes type → 任务映射（App 抓包确认，与 mini 一致）
-| type | flag | 任务 | 可纯接口刷 |
-|---|---|---|---|
-| 2 | if_shared | 分享团长海报 | ✓（可能需先 CreateLeaderInviteWord） |
-| 8 | is_get_meituan_redpack | 领美团红包 | ✓ |
-| 9 | is_get_eleme_redpack | 领饿了么红包 | ✓ |
-| 10 | is_view_welfare_page | 浏览福利页 | ✓ |
-| 11 | is_view_bwc_page | 浏览霸王餐页 | ✓ |
-| — | is_view_tp_ad | 浏览广告 | ✗ App 不走 AddLotteryTimes（WebView 计时自动标记） |
-| — | is_view_douyin_mall | 浏览抖音商城 | ✗ 同上 |
+### OnAdViewed sign 算法（2026-07-20 H5 逆向 + 抓包实测验证）
+```
+// 签名串（固定顺序、& 分隔、silk_id 为数字）
+signStr = "silk_id=" + silkId + "&timestamp=" + tsSec + "&nonce=" + nonce + "&bus_type=" + busType
+// HMAC-SHA256，密钥硬编码 "lcjkbqadfrzsewxy"，输出 base64
+sign = base64(HMAC_SHA256("lcjkbqadfrzsewxy", signStr))
+// nonce = 6 位随机小写字母；timestamp = 秒级（注意：X-Garen header 是毫秒，body.timestamp 是秒）
+```
+> Java 实现：`new HMac(HmacAlgorithm.HmacSHA256, "lcjkbqadfrzsewxy".getBytes()).digest(signStr)` → `cn.hutool.core.codec.Base64.encode(bytes)`。已实测两抓包样本 MATCH。
 
-> **App 版与 mini 版能刷的任务完全相同（5 个 type）**。App 版优势仅在登录态更长效（`X-Sivir` JWT，exp≈7 天，比 mini session 长效）。
+### AddLotteryTimes type / OnAdViewed bus_type → 任务映射
+| 调用方法 | type/bus_type | flag | 任务 | 可纯接口刷 |
+|---|---|---|---|---|
+| AddLotteryTimes | 2 | if_shared | 分享团长海报 | ✓（可能需先 CreateLeaderInviteWord） |
+| AddLotteryTimes | 8 | is_get_meituan_redpack | 领美团红包 | ✓ |
+| AddLotteryTimes | 9 | is_get_eleme_redpack | 领饿了么红包 | ✓ |
+| AddLotteryTimes | 10 | is_view_welfare_page | 浏览福利页 | ✓ |
+| AddLotteryTimes | 11 | is_view_bwc_page | 浏览霸王餐页 | ✓ |
+| OnAdViewed | 2 | is_view_tp_ad | 看视频 | ✓（带 HMAC sign，2026-07-20 新增） |
+| OnAdViewed | 4 | is_view_douyin_mall | 看商城 | ✓（带 HMAC sign，2026-07-20 新增） |
+| ReceiveExtraLottery | step=1 | has_got_first_step_prize | 领第一阶梯奖 | ✓（lottery_count>=first_step_count，2026-07-20 新增） |
+| ReceiveExtraLottery | step=2 | has_got_second_step_prize | 领第二阶梯奖 | ✓（lottery_count>=second_step_count，2026-07-20 新增） |
+
+> **2026-07-20 更新**：看视频/看商城走 `OnAdViewed`（非 `AddLotteryTimes`），领阶梯奖走 `ReceiveExtraLottery`，**推翻原"纯接口刷不到"判定**。App 版可纯接口刷的任务从 5 个扩到 9 个（+看视频/看商城/领两阶梯奖）。详见 task `07-20-lottery-extra-tasks`。App 版优势：登录态更长效（`X-Sivir` JWT，exp≈7 天）。
 
 ### 抢单/查询（Silkworm，Android 登录态，端点 gw，见 XiaochanHttp）
 `RecService.GetStorePromotionList` / `RecService.SearchStorePromotionList` / `SilkwormService.GetStorePromotionDetail` / `SilkwormService.GrabPromotionQuota` / `SilkwormCardService.GetUserCardList` / `SilkwormLbsService.Suggestion`

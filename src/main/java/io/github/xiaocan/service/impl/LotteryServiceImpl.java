@@ -50,8 +50,14 @@ public class LotteryServiceImpl implements LotteryService {
         TYPE_TO_DESC.put(9, "领饿了么红包");
         TYPE_TO_DESC.put(10, "浏览福利页");
         TYPE_TO_DESC.put(11, "浏览霸王餐页");
-        // 注：is_view_tp_ad / is_view_douyin_mall 在 App 端不走 AddLotteryTimes（WebView 计时自动标记），纯接口刷不到，故不在此映射。
+        // 注：is_view_tp_ad / is_view_douyin_mall 走独立方法 OnAdViewed（bus_type=2/4，带 HMAC sign），
+        // 领阶梯奖走 ReceiveExtraLottery（step=1/2）。2026-07-20 抓包+H5 逆向确认，见
+        // .trellis/tasks/07-20-lottery-extra-tasks/research/capture-extra-tasks.md。不走 AddLotteryTimes。
     }
+
+    /** TaskItem.type 语义扩展：领阶梯奖用 101/102，避免与 AddLotteryTimes.type(2/8/9/10/11) 和 bus_type(2/4) 冲突 */
+    private static final int TYPE_CLAIM_FIRST_STEP = 101;
+    private static final int TYPE_CLAIM_SECOND_STEP = 102;
 
     private final LotteryHttp lotteryHttp = new LotteryHttp();
 
@@ -143,6 +149,22 @@ public class LotteryServiceImpl implements LotteryService {
                 items.add(item);
             }
 
+            // 3.5) 看视频/看商城（OnAdViewed，独立于 AddLotteryTimes，带 HMAC sign）
+            addAdViewTask(items, li, auth, "is_view_tp_ad", LotteryHttp.BUS_TYPE_VIEW_TP_AD, "看视频");
+            addAdViewTask(items, li, auth, "is_view_douyin_mall", LotteryHttp.BUS_TYPE_VIEW_DOUYIN_MALL, "看商城");
+
+            // 3.6) 领累计抽奖阶梯奖（ReceiveExtraLottery）——需取刷后最新 lottery_count
+            try {
+                JSONObject progress = lotteryHttp.getLotteryProgress(auth);
+                JSONObject lp = progress == null ? null : progress.getJSONObject("lottery_progress");
+                if (lp != null) {
+                    addStepPrizeTask(items, lp, auth, 1, "first", "领第一阶梯奖", TYPE_CLAIM_FIRST_STEP);
+                    addStepPrizeTask(items, lp, auth, 2, "second", "领第二阶梯奖", TYPE_CLAIM_SECOND_STEP);
+                }
+            } catch (Exception e) {
+                log.warn("领阶梯奖 getLotteryProgress 失败（不影响明细）: {}", e.getMessage());
+            }
+
             // 4) 刷后快照（统计数字，失败不丢明细，独立 try）
             try {
                 JSONObject afterProgress = lotteryHttp.getLotteryProgress(auth);
@@ -167,6 +189,107 @@ public class LotteryServiceImpl implements LotteryService {
     }
 
     /**
+     * 看视频/看商城任务（OnAdViewed）。已完成记 SKIPPED，未完成调 onAdViewed 记 OK/FAIL。
+     *
+     * @param li      LotteryInfo.lottery_info（取 flag 翻转状态）
+     * @param flag    is_view_tp_ad / is_view_douyin_mall
+     * @param busType OnAdViewed bus_type（2/4）
+     * @param desc    任务描述
+     */
+    private void addAdViewTask(List<LotteryTaskResultVO.TaskItem> items, JSONObject li, LotteryAuth auth,
+                               String flag, int busType, String desc) {
+        LotteryTaskResultVO.TaskItem item = new LotteryTaskResultVO.TaskItem();
+        item.setType(busType);
+        item.setDesc(desc);
+        Boolean done = li == null ? null : li.getBoolean(flag);
+        if (Boolean.TRUE.equals(done)) {
+            item.setStatus(LotteryTaskResultVO.TaskStatus.SKIPPED);
+            item.setOk(false);
+            item.setMsg("已完成");
+            items.add(item);
+            return;
+        }
+        try {
+            JSONObject r = lotteryHttp.onAdViewed(auth, busType);
+            int code = codeOf(r);
+            boolean ok = code == 0;
+            item.setStatus(ok ? LotteryTaskResultVO.TaskStatus.OK : LotteryTaskResultVO.TaskStatus.FAIL);
+            item.setOk(ok);
+            if (!ok) {
+                item.setMsg(friendlyMsg(msgOf(r), code));
+            }
+        } catch (Exception e) {
+            item.setStatus(LotteryTaskResultVO.TaskStatus.FAIL);
+            item.setOk(false);
+            item.setMsg(friendlyMsg(e.getMessage(), -1));
+            log.warn("onAdViewed busType={} 异常: {}", busType, e.getMessage());
+        }
+        items.add(item);
+    }
+
+    /**
+     * 领累计抽奖阶梯奖（ReceiveExtraLottery）。
+     * 已领取记 SKIPPED("已领取")，未达阈值记 SKIPPED("未达阶梯阈值")，达阈值调 receiveExtraLottery 记 OK/FAIL。
+     *
+     * @param lp      GetLotteryProgress.lottery_progress
+     * @param step    1=first, 2=second
+     * @param prefix  "first" / "second"（拼 step_count / has_got_*_step_prize 字段名）
+     * @param desc    任务描述
+     * @param typeVal TaskItem.type（101/102，区分阶梯奖）
+     */
+    private void addStepPrizeTask(List<LotteryTaskResultVO.TaskItem> items, JSONObject lp, LotteryAuth auth,
+                                  int step, String prefix, String desc, int typeVal) {
+        LotteryTaskResultVO.TaskItem item = new LotteryTaskResultVO.TaskItem();
+        item.setType(typeVal);
+        item.setDesc(desc);
+        int count = lp.getIntValue("lottery_count");
+        int stepCount = lp.getIntValue(prefix + "_step_count");
+        boolean got = lp.getBooleanValue("has_got_" + prefix + "_step_prize");
+        if (got) {
+            item.setStatus(LotteryTaskResultVO.TaskStatus.SKIPPED);
+            item.setOk(false);
+            item.setMsg("已领取");
+            items.add(item);
+            return;
+        }
+        if (count < stepCount) {
+            item.setStatus(LotteryTaskResultVO.TaskStatus.SKIPPED);
+            item.setOk(false);
+            item.setMsg("未达阶梯阈值");
+            items.add(item);
+            return;
+        }
+        try {
+            JSONObject r = lotteryHttp.receiveExtraLottery(auth, step);
+            int code = codeOf(r);
+            boolean ok = code == 0;
+            item.setStatus(ok ? LotteryTaskResultVO.TaskStatus.OK : LotteryTaskResultVO.TaskStatus.FAIL);
+            item.setOk(ok);
+            if (!ok) {
+                item.setMsg(friendlyMsg(msgOf(r), code));
+            }
+        } catch (Exception e) {
+            item.setStatus(LotteryTaskResultVO.TaskStatus.FAIL);
+            item.setOk(false);
+            item.setMsg(friendlyMsg(e.getMessage(), -1));
+            log.warn("receiveExtraLottery step={} 异常: {}", step, e.getMessage());
+        }
+        items.add(item);
+    }
+
+    /** 取响应 status.code，异常/null 返回 -1 */
+    private int codeOf(JSONObject r) {
+        JSONObject status = r == null ? null : r.getJSONObject("status");
+        return status == null ? -1 : status.getIntValue("code");
+    }
+
+    /** 取响应 status.msg，异常/null 返回 null */
+    private String msgOf(JSONObject r) {
+        JSONObject status = r == null ? null : r.getJSONObject("status");
+        return status == null ? null : status.getString("msg");
+    }
+
+    /**
      * 把单任务失败原因转成友好文案（与前端顶层 friendlyError 映射对齐）。
      *
      * @param raw  原始原因（AddLotteryTimes status.msg 或异常 message）
@@ -175,6 +298,9 @@ public class LotteryServiceImpl implements LotteryService {
     private String friendlyMsg(String raw, int code) {
         if (code == 401) {
             return "当日加机会次数已满或权限不足";
+        }
+        if (code == 40043) {
+            return "阶梯奖已领取";
         }
         if (raw == null) {
             return "无响应";

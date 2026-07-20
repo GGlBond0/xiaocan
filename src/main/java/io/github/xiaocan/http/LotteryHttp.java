@@ -1,5 +1,7 @@
 package io.github.xiaocan.http;
 
+import cn.hutool.crypto.digest.HMac;
+import cn.hutool.crypto.digest.HmacAlgorithm;
 import cn.hutool.crypto.digest.MD5;
 import cn.hutool.http.HttpRequest;
 import cn.hutool.http.HttpResponse;
@@ -33,6 +35,22 @@ public class LotteryHttp {
     private static final String LOTTERY_INFO_METHOD = "SilkwormLotteryMobile.LotteryInfo";
     private static final String ADD_LOTTERY_METHOD = "SilkwormLotteryMobile.AddLotteryTimes";
     private static final String LOTTERY_PROGRESS_METHOD = "SilkwormLotteryMobile.GetLotteryProgress";
+    /**
+     * 看视频/看商城完成上报（OnAdViewed，2026-07-20 抓包+H5逆向确认，见
+     * .trellis/tasks/07-20-lottery-extra-tasks/research/capture-extra-tasks.md）。
+     * bus_type=2 看视频(is_view_tp_ad)，bus_type=4 看商城(is_view_douyin_mall)。
+     */
+    private static final String ON_AD_VIEWED_METHOD = "SilkwormLotteryMobile.OnAdViewed";
+    /** 领取累计抽奖阶梯奖（step=1 first，step=2 second） */
+    private static final String RECEIVE_EXTRA_LOTTERY_METHOD = "SilkwormLotteryMobile.ReceiveExtraLottery";
+
+    /** OnAdViewed sign 的 HMAC-SHA256 密钥（H5 源码硬编码，全账号通用） */
+    private static final String ON_AD_VIEWED_SIGN_KEY = "lcjkbqadfrzsewxy";
+
+    /** OnAdViewed bus_type：看视频（is_view_tp_ad） */
+    public static final int BUS_TYPE_VIEW_TP_AD = 2;
+    /** OnAdViewed bus_type：看商城（is_view_douyin_mall） */
+    public static final int BUS_TYPE_VIEW_DOUYIN_MALL = 4;
 
     /** 任务/积分状态服务 */
     private static final String TASK_SERVER = "ActivityTask";
@@ -81,6 +99,61 @@ public class LotteryHttp {
      */
     public JSONObject getLotteryProgress(LotteryAuth auth) {
         return postAuth(getBody(auth), LOTTERY_SERVER, LOTTERY_PROGRESS_METHOD, auth, "getLotteryProgress");
+    }
+
+    /**
+     * 看视频/看商城完成上报 +1 抽奖机会（OnAdViewed，带 HMAC-SHA256 sign）。
+     * <p>
+     * 抓包确认（2026-07-20）：bus_type=2 看视频翻转 is_view_tp_ad，bus_type=4 看商城翻转 is_view_douyin_mall，
+     * 每次成功 day_num+1。sign 算法：HMAC-SHA256(密钥 "lcjkbqadfrzsewxy",
+     * "silk_id={s}&timestamp={秒}&nonce={6位随机小写}&bus_type={b}")，base64 输出。已实测两样本 MATCH。
+     *
+     * @param auth    登录态
+     * @param busType {@link #BUS_TYPE_VIEW_TP_AD}=看视频, {@link #BUS_TYPE_VIEW_DOUYIN_MALL}=看商城
+     */
+    public JSONObject onAdViewed(LotteryAuth auth, int busType) {
+        long tsSec = System.currentTimeMillis() / 1000;
+        String nonce = randomNonce6();
+        String signStr = "silk_id=" + auth.getSilkId()
+                + "&timestamp=" + tsSec
+                + "&nonce=" + nonce
+                + "&bus_type=" + busType;
+        byte[] signBytes = new HMac(HmacAlgorithm.HmacSHA256, ON_AD_VIEWED_SIGN_KEY.getBytes()).digest(signStr);
+        String sign = cn.hutool.core.codec.Base64.encode(signBytes);
+        Map<String, Object> body = baseBody(auth);
+        body.put("timestamp", tsSec);
+        body.put("nonce", nonce);
+        body.put("bus_type", busType);
+        body.put("sign", sign);
+        return postAuth(JSONObject.toJSONString(body), LOTTERY_SERVER, ON_AD_VIEWED_METHOD, auth, "onAdViewed");
+    }
+
+    /**
+     * 领取累计抽奖阶梯奖（ReceiveExtraLottery）。
+     * <p>
+     * 抓包确认（2026-07-20 H5 逆向）：step=1 领 first 阶梯奖，step=2 领 second 阶梯奖。
+     * 触发条件 lottery_count &gt;= {first|second}_step_count 且 !has_got_{...}_step_prize；
+     * 已领取返回业务码 40043。
+     *
+     * @param auth 登录态
+     * @param step 1=first, 2=second
+     */
+    public JSONObject receiveExtraLottery(LotteryAuth auth, int step) {
+        Map<String, Object> body = baseBody(auth);
+        body.put("step", step);
+        return postAuth(JSONObject.toJSONString(body), LOTTERY_SERVER, RECEIVE_EXTRA_LOTTERY_METHOD, auth, "receiveExtraLottery");
+    }
+
+    /**
+     * 生成 6 位随机小写字母 nonce（OnAdViewed sign 用，与 H5 源码同算法）。
+     */
+    private static String randomNonce6() {
+        Random random = new Random();
+        StringBuilder sb = new StringBuilder(6);
+        for (int i = 0; i < 6; i++) {
+            sb.append((char) ('a' + random.nextInt(26)));
+        }
+        return sb.toString();
     }
 
     /**
