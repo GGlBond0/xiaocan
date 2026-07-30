@@ -107,4 +107,12 @@ public class StoreInfo {
      */
     private Integer storeCategorySubType;
 
+    /**
+     * 是否复购活动（活动类型标记，非「当前账号是否有资格」）。
+     * 来源：promotion_detail.if_repurchase_promotion 或 promotion_condition.rp。
+     * true 表示须在该店有过订单才能参加；账号无历史单时 GrabPromotionQuota 返回 code=107。
+     * 本字段不单独阻断抢单（有历史单的账号仍可能成功）。
+     */
+    private Boolean ifRepurchasePromotion;
+
 }

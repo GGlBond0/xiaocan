@@ -41,10 +41,11 @@ import java.util.stream.Collectors;
  *
  * 一次命中按 storeId 分组（BaseTask 已分组调用），每组 = 同门店所有 (活动,平台) 组合。
  *  - SINGLE：按平台优先级选组合 → 组合内按账号优先级依次试；未到 start 建定时任务到 start；
- *    code==70/饭票不足/登录态过期 → 换下一账号；code==6/详情缺失/黑名单/未知 → 降级下一组合；
+ *    code==70/107/饭票不足/登录态过期 → 换下一账号；code==6/详情缺失/黑名单/未知 → 降级下一组合；
  *    成功即停；全部组合耗尽 → 失败通知。优先级硬约束：等待最高优先级期间不碰低优先级。
+ *    code==107：复购活动且当前账号未在该店下过单（账号×门店），其它账号可能有资格故换号。
  *  - ALL：每个勾选账号并行独立、不换号；各账号在所有命中门店按平台优先级抢，
- *    某账号在某门店失败(code==70 等)即放弃该门店、转下一门店。
+ *    某账号在某门店失败(code==70/107/-1 等账号级)即放弃该门店、转下一门店。
  *
  * 架构方案 C：立即抢在 grabExecutor 内存循环换号；仅"未到 start 的最高优先级组合"落一条
  * auto=0 grab_config 走 GrabCronScheduler 定时，到点回调回到内存循环从游标继续。
@@ -244,7 +245,7 @@ public class AutoGrabServiceImpl implements AutoGrabService {
             int code = result == null ? -1 : (result.getCode() == null ? -1 : result.getCode());
             markConsumed(entity.getId(), code, result == null ? "执行失败" : result.getMsg());
             if (shouldSwitchAccount(code)) {
-                // code==70/饭票不足/登录态过期：ALL 不换号 → 该账号放弃该门店，转下一门店
+                // code==70/107/饭票不足/登录态过期：ALL 不换号 → 该账号放弃该门店，转下一门店
                 // （本调用只一个门店组，故直接结束本账号本轮）
                 log.info("自动抢单ALL放弃门店: userId={}, account={}, promotionId={}, code={}",
                         userId, account, store.getPromotionId(), code);
@@ -373,9 +374,10 @@ public class AutoGrabServiceImpl implements AutoGrabService {
 
     /** true=换号（账号相关失败），false=该组合失败降级（组合/活动相关失败）。 */
     private boolean shouldSwitchAccount(int code) {
-        // code==70 限频、-1 饭票不足/登录态过期 → 换号
+        // code==70 限频、-1 饭票不足/登录态过期、107 复购且本号无该店历史单 → 换号
         // code==6 已抢完、其它 → 降级组合
-        return code == 70 || code == -1;
+        // 注意：107 是账号×门店资格失败（非活动级）；其它账号可能有该店历史单，不得因首号 107 废组合
+        return code == 70 || code == -1 || code == 107;
     }
 
     // ==================== 辅助 ====================

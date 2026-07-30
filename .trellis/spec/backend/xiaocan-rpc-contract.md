@@ -71,12 +71,35 @@ return uuid.substring(0, 4) + id + uuid.substring(4, 20 - id.length() - 4);
 - `GetLotteryProgress`：`{"silk_id":222559356}`
 - `Lottery`（执行抽奖/开红包，2026-07-21 抓包确认）：`{"silk_id":222559356,"prize_type":1}`，每调一次 `lottery_count` 减 1，响应 `{"status":{"code":0},"prize":{...},"lucky_times":0,"is_lucky":false,"verify_method":0}`
 - `GrabPromotionQuota`（抢单，端点 gw，带登录态）：`{"silk_id":...,"promotion_id":...,"latitude":...,"longitude":...,"city_code":...,"store_platform":1,"if_advance_order":false}`
+- `GetStorePromotionDetail`（活动详情）：`{"silk_id":...,"promotion_id":...,"app_id":20}`（列表/无登录态可 silk_id=0）
+
+### 活动详情复购字段（`GetStorePromotionDetail` / 列表项若存在）
+
+| 字段 | 类型 | 含义 |
+|------|------|------|
+| `if_repurchase_promotion` | boolean | 活动类型是否为复购活动（须在该店有过订单才能参加） |
+| `promotion_condition.rp` | boolean | 与上同源的条件标记；解析时 `if_repurchase_promotion` 优先，回落 `rp` |
+
+> **注意**：`if_repurchase_promotion=true` 只表示**活动类型**，**不**表示「当前账号一定无资格」。有该店历史单的账号仍可能 `GrabPromotionQuota` 成功。客户端不可伪造资格；服务端按账号×门店历史单校验。
 
 ### 响应
 ```json
 {"status":{"code":0}, ...业务字段...}
 ```
 `code != 0` = 业务失败，`status.msg` 为错误信息（中文 UTF-8）。
+
+### GrabPromotionQuota 业务码（抢单，补充）
+
+| code | 语义 | 本地处理 |
+|------|------|----------|
+| 0 | 成功（美团还需 `promotion_order_id` 非空） | 记成功、停配置 |
+| 4 | 未开始/可重试 | `doGrab` 内重试 |
+| 6 | 已抢完等组合/活动级失败 | 失败；自动抢**降级组合** |
+| 70 | 账号×门店限频 | 失败；自动抢**换号** |
+| **107** | **复购活动且当前账号未在该店下过单**（账号×门店资格） | 失败不重试；文案用上游 msg（空则规范化）；自动抢 **换号**（其它号可能有历史单） |
+
+证据：`har/ProxyPin7-30_12_34_06.har`，`promotion_id=120917104`，msg=`该活动为复购活动，您还未在该店铺下过单，无法参加该活动`。  
+**不可**用 `OrderExchange` 绕过美团 107（同 HAR 中 OrderExchange 对美团活动 code=0 但无 order，非抢单成功）。
 
 App 版 `LotteryInfo` 额外返回 `lottery_times` 对象（各任务加几次机会，均 1，展示辅助）；`GetLotteryProgress` 额外返回 `first_step_count`/`second_step_count`（阶梯抽奖）。
 

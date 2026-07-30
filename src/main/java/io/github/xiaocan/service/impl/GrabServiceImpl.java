@@ -290,6 +290,10 @@ public class GrabServiceImpl extends ServiceImpl<GrabConfigMapper, GrabConfigEnt
             JSONObject status = resp.getJSONObject("status");
             int code = status != null ? status.getIntValue("code") : -1;
             String msg = status != null ? status.getString("msg") : "";
+            // code=107：复购活动且当前账号未在该店下过单（账号×门店资格失败，不重试；msg 空则规范化）
+            if (code == 107 && !StringUtils.hasText(msg)) {
+                msg = "复购活动：当前账号未在该店铺下过单，无法参加";
+            }
             // 美团：成功需 code==0 且 promotion_order_id 非空；饿了么/京东 OrderExchange 响应无 promotion_order_id，成功仅看 code==0
             Long orderId = resp.getLong("promotion_order_id");
             boolean success = isMeituan ? (code == 0 && orderId != null) : (code == 0);
@@ -313,6 +317,7 @@ public class GrabServiceImpl extends ServiceImpl<GrabConfigMapper, GrabConfigEnt
                 push(config, user, "抢单成功", buildPushPrefix(config, storeName, promoDetail) + okMsg);
                 break;
             }
+            // 仅 code==4（未开始）重试；code==107 等业务失败直接结束（自动抢侧 107 会换号）
             if (code != 4) {
                 push(config, user, "抢单失败", buildPushPrefix(config, storeName, promoDetail) + " 失败：" + msg + "(code=" + code + ")");
                 break;

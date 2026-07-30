@@ -1,0 +1,6 @@
+{"file": ".trellis/spec/backend/xiaocan-rpc-contract.md", "reason": "RPC contract for GrabPromotionQuota codes and promotion detail fields"}
+{"file": ".trellis/spec/backend/index.md", "reason": "Backend guideline index"}
+{"file": ".trellis/tasks/07-30-repurchase-grab-guard/prd.md", "reason": "Requirements and AC1-AC6"}
+{"file": ".trellis/tasks/07-30-repurchase-grab-guard/design.md", "reason": "Technical design and code map"}
+{"file": ".trellis/tasks/07-30-repurchase-grab-guard/implement.md", "reason": "Ordered checklist and validation"}
+{"file": "har/_grab_blocks.txt", "reason": "HAR research: detail if_repurchase_promotion + GrabPromotionQuota code 107"}

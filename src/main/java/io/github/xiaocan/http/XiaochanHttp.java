@@ -522,6 +522,15 @@ public class XiaochanHttp {
         storeInfo.setDistance(jsonObject.getInteger("distance") );
         storeInfo.setIcon(store.getString("icon") );
         storeInfo.setStoreId(store.getInteger("store_id") );
+        // 复购活动类型标记（活动级，非账号资格）：if_repurchase_promotion 优先，回落 promotion_condition.rp
+        Boolean repurchase = jsonObject.getBoolean("if_repurchase_promotion");
+        if (!Boolean.TRUE.equals(repurchase)) {
+            JSONObject cond = jsonObject.getJSONObject("promotion_condition");
+            if (cond != null && Boolean.TRUE.equals(cond.getBoolean("rp"))) {
+                repurchase = true;
+            }
+        }
+        storeInfo.setIfRepurchasePromotion(Boolean.TRUE.equals(repurchase));
         // 饿了么/京东 OrderExchange 所需活动属性（美团也可填充，仅饿了么/京东分支使用）
         storeInfo.setPromotionType(jsonObject.getInteger("promotion_type"));
         storeInfo.setCityCode(store.getInteger("city_code"));
