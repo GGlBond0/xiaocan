@@ -79,9 +79,10 @@ public class MonitorConfigEntity {
      */
     private String grabLoginStateIds;
     /**
-     * 启用抢单的平台集合，逗号分隔 int（1美团/2饿了么/3京东，如 "1,2"）。
-     * 语义升级：顺序即平台优先级（串内先后=优先级高到低）。
-     * null/空 → 仅美团（向后兼容存量配置）。
+     * 监控生效平台集合，逗号分隔 int（1美团/2饿了么/3京东，如 "1,2"）。
+     * 同时约束推送与自动抢单：未勾选平台不推、不写历史、不抢。
+     * 顺序即自动抢单平台优先级（高→低）。
+     * null/空 → 三平台全开。
      */
     private String grabPlatforms;
     /**

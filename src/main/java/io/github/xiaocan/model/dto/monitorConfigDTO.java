@@ -76,8 +76,9 @@ public class monitorConfigDTO {
      */
     private String grabLoginStateIds;
     /**
-     * 启用抢单的平台集合，逗号分隔 int（1美团/2饿了么/3京东，如 "1,2"）。
-     * 顺序即平台优先级。null/空 → 仅美团。仅 autoGrab=true 时有意义。
+     * 监控生效平台，逗号分隔 int（1美团/2饿了么/3京东，如 "1,2"）。
+     * 同时管推送与自动抢单；顺序即抢单平台优先级。
+     * null/空 → 三平台全开。始终可提交（不依赖 autoGrab）。
      */
     private String grabPlatforms;
     /**

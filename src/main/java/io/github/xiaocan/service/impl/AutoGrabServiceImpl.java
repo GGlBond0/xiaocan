@@ -13,6 +13,7 @@ import io.github.xiaocan.service.LoginStateService;
 import io.github.xiaocan.service.MonitoryConfigService;
 import io.github.xiaocan.service.PushService;
 import io.github.xiaocan.tasks.GrabCronScheduler;
+import io.github.xiaocan.utils.MonitorPlatforms;
 import jakarta.annotation.PreDestroy;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
@@ -54,8 +55,6 @@ import java.util.stream.Collectors;
 @Service
 public class AutoGrabServiceImpl implements AutoGrabService {
 
-    /** 美团平台 type 值 */
-    private static final int PLATFORM_MEITUAN = 1;
     /** 占位"执行中"标记，仅作状态展示；防重键是 lastGrabTime（见类注释） */
     private static final String RUNNING_MARK = "执行中";
 
@@ -498,19 +497,9 @@ public class AutoGrabServiceImpl implements AutoGrabService {
         return valid;
     }
 
-    /** 解析平台优先级（有序），null/空 → [1]（仅美团，向后兼容）。 */
+    /** 解析平台优先级（有序），null/空 → [1,2,3] 全开（与推送生效平台同一语义）。 */
     private List<Integer> parsePlatformOrder(String grabPlatforms) {
-        List<Integer> order = new ArrayList<>();
-        if (StringUtils.hasText(grabPlatforms)) {
-            for (String s : grabPlatforms.split(",")) {
-                String t = s.trim();
-                if (!t.isEmpty()) {
-                    try { order.add(Integer.parseInt(t)); } catch (NumberFormatException ignore) {}
-                }
-            }
-        }
-        if (order.isEmpty()) order.add(PLATFORM_MEITUAN);
-        return order;
+        return MonitorPlatforms.parseEffective(grabPlatforms);
     }
 
     private int indexOf(List<StoreInfo> combos, StoreInfo s) {

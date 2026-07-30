@@ -76,3 +76,4 @@ void testPush(Long locationId);                                             // �
 - **字段缺失优雅省略**：空字段不拼出 "null"，对应段落直接省略；`StringUtils.hasText` 判空。
 - `summary`（标题）保持简短（"抢单成功"/"抢单失败"/"抢单拦截"），详情放正文。
 - 监控命中通知（`BaseTask`）自行构造含店铺信息的正文，不走 `buildPushPrefix`。
+- **监控生效平台**：`monitor_config.grab_platforms` 同时约束推送与自动抢单。`BaseTask` 在推送前按 `MonitorPlatforms.parseEffective` 过滤（null/空=三平台全开 1,2,3）；未勾选平台不推、不写 `store_pushed_history`、不计入 `notifyStoreCount`、不触发 autoGrab。

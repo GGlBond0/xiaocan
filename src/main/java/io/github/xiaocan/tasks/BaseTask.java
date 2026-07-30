@@ -8,6 +8,7 @@ import io.github.xiaocan.model.entity.MonitorConfigEntity;
 import io.github.xiaocan.model.entity.StorePushedHistoryEntity;
 import io.github.xiaocan.model.enums.MonitorConfigStatusEnums;
 import io.github.xiaocan.service.*;
+import io.github.xiaocan.utils.MonitorPlatforms;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.BeanUtils;
@@ -107,6 +108,8 @@ public class BaseTask {
                         notifyConfig.getId(), droppedByClosed);
             }
             availableStores = openStores;
+            // 生效平台过滤（推送/历史/计数/autoGrab 共用）：未勾选平台整条当未命中
+            availableStores = filterByEffectivePlatforms(notifyConfig, availableStores);
             if(availableStores.isEmpty()){
                 log.info("configId: {} 没有满足条件的门店活动", notifyConfig.getId());
                 execHistory.setRemark("没有满足条件的门店活动");
@@ -172,6 +175,37 @@ public class BaseTask {
             log.warn("解析营业时间失败，跳过过滤 openHours={}: {}", openHours, e.getMessage());
             return true;
         }
+    }
+
+    /**
+     * 按监控生效平台过滤命中活动。null/空 grabPlatforms → 三平台全开；
+     * store.type 为 null 或不在集合内 → 丢弃（不推、不写历史、不抢）。
+     */
+    protected List<StoreInfo> filterByEffectivePlatforms(MonitorConfigEntity notifyConfig,
+                                                          List<StoreInfo> stores) {
+        if (stores == null || stores.isEmpty()) {
+            return stores == null ? List.of() : stores;
+        }
+        List<Integer> platforms = MonitorPlatforms.parseEffective(notifyConfig.getGrabPlatforms());
+        List<StoreInfo> kept = new java.util.ArrayList<>(stores.size());
+        int droppedNullType = 0;
+        int droppedPlatform = 0;
+        for (StoreInfo s : stores) {
+            if (s.getType() == null) {
+                droppedNullType++;
+                continue;
+            }
+            if (!MonitorPlatforms.contains(platforms, s.getType())) {
+                droppedPlatform++;
+                continue;
+            }
+            kept.add(s);
+        }
+        if (droppedNullType > 0 || droppedPlatform > 0) {
+            log.info("configId: {} 生效平台{} 过滤掉 nullType={} 非勾选平台={} 剩余={}",
+                    notifyConfig.getId(), platforms, droppedNullType, droppedPlatform, kept.size());
+        }
+        return kept;
     }
 
     /**

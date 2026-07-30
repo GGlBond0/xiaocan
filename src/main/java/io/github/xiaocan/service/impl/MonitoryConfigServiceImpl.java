@@ -17,6 +17,7 @@ import io.github.xiaocan.service.LoginStateService;
 import io.github.xiaocan.service.MonitoryConfigService;
 import io.github.xiaocan.service.UserService;
 import io.github.xiaocan.tasks.MonitorCronScheduler;
+import io.github.xiaocan.utils.MonitorPlatforms;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.BeanUtils;
@@ -166,20 +167,24 @@ public class MonitoryConfigServiceImpl extends ServiceImpl<NotifyConfigMapper, M
             // 规整化：回写去重保序的 ids 串，并把 grabLoginStateId 回填为第一个（兼容旧读路径）
             dto.setGrabLoginStateIds(joinIds(seen));
             dto.setGrabLoginStateId(seen.iterator().next());
-            // 平台至少一个（顺序即优先级，由前端保证，这里只校验非空）
-            if (!StringUtils.hasText(dto.getGrabPlatforms())) {
-                throw new BusinessException("开启自动抢单时至少选择一个抢单平台");
-            }
             // 模式空默认 SINGLE
             if (dto.getGrabMode() == null) {
                 dto.setGrabMode(io.github.xiaocan.model.enums.GrabModeEnums.SINGLE);
             }
         } else {
-            // 未开启自动抢单：清空抢单相关字段，避免脏数据
+            // 未开启自动抢单：清空账号/模式；生效平台保留（同时管推送）
             dto.setGrabLoginStateId(null);
             dto.setGrabLoginStateIds(null);
-            dto.setGrabPlatforms(null);
             dto.setGrabMode(null);
+        }
+        // 生效平台：null=全开；非空须至少 1 个合法码（1/2/3），规整化后写回
+        if (StringUtils.hasText(dto.getGrabPlatforms())) {
+            if (!MonitorPlatforms.isValidForSave(dto.getGrabPlatforms())) {
+                throw new BusinessException("生效平台至少选择一个（美团/饿了么/京东）");
+            }
+            dto.setGrabPlatforms(MonitorPlatforms.normalizeForSave(dto.getGrabPlatforms()));
+        } else {
+            dto.setGrabPlatforms(null);
         }
         MonitorConfigEntity entity;
         if (dto.getId() != null) {
