@@ -32,7 +32,8 @@ public class LotteryServiceImpl implements LotteryService {
 
     /**
      * LotteryInfo.lottery_info 标志位 → AddLotteryTimes.type 映射（已抓包确认）。
-     * 仅含"浏览/领取类"任务；下单/签到等非浏览类不在范围。
+     * 仅含"浏览/领取类"任务；下单不在范围。
+     * 每日签到 type=1 无 lottery_info 标志位，见 {@link #TYPE_SIGN_IN} / {@link #addSignInTask}。
      */
     private static final Map<String, Integer> FLAG_TO_TYPE = new LinkedHashMap<>();
     /**
@@ -48,6 +49,7 @@ public class LotteryServiceImpl implements LotteryService {
         FLAG_TO_TYPE.put("is_view_welfare_page", 10);
         FLAG_TO_TYPE.put("is_view_bwc_page", 11);
         // type → desc
+        TYPE_TO_DESC.put(1, "每日签到");
         TYPE_TO_DESC.put(2, "分享");
         TYPE_TO_DESC.put(8, "领美团红包");
         TYPE_TO_DESC.put(9, "领饿了么红包");
@@ -56,7 +58,16 @@ public class LotteryServiceImpl implements LotteryService {
         // 注：is_view_tp_ad / is_view_douyin_mall 走独立方法 OnAdViewed（bus_type=2/4，带 HMAC sign），
         // 领阶梯奖走 ReceiveExtraLottery（step=1/2）。2026-07-20 抓包+H5 逆向确认，见
         // .trellis/tasks/07-20-lottery-extra-tasks/research/capture-extra-tasks.md。不走 AddLotteryTimes。
+        // 每日签到 type=1：2026-07-29 实测 AddLotteryTimes(1)，无 flag；已签业务码 40002。
     }
+
+    /**
+     * 每日签到 AddLotteryTimes.type（2026-07-29 实测：未签 code=0 day_num+1；已签 code=40002「签到限一次」）。
+     * lottery_info 无对应 is_* 标志，不能走 FLAG_TO_TYPE，每次 run 尝试调用、用返回码区分 OK/SKIPPED。
+     */
+    private static final int TYPE_SIGN_IN = 1;
+    /** 已签到业务码（AddLotteryTimes type=1） */
+    private static final int CODE_SIGN_IN_ALREADY = 40002;
 
     /** TaskItem.type 语义扩展：领阶梯奖用 101/102，避免与 AddLotteryTimes.type(2/8/9/10/11) 和 bus_type(2/4) 冲突 */
     private static final int TYPE_CLAIM_FIRST_STEP = 101;
@@ -64,8 +75,6 @@ public class LotteryServiceImpl implements LotteryService {
 
     private final LotteryHttp lotteryHttp = new LotteryHttp();
 
-    /** 单账号内刷任务间隔：每两个实际发请求的任务之间 sleep（降 WAF 风控） */
-    private static final long TASK_INTERVAL_MS = 40_000L;
     /** 账号内领阶梯奖 step1→step2 间隔 */
     private static final long ACCOUNT_INTERVAL_MS = 10_000L;
     /** 单账号内开红包间隔：每次抽奖之间 sleep */
@@ -126,7 +135,7 @@ public class LotteryServiceImpl implements LotteryService {
 
                 Boolean done = li == null ? null : li.getBoolean(flag);
                 if (Boolean.TRUE.equals(done)) {
-                    // 已完成，跳过未调用（不计间隔）
+                    // 已完成，跳过未调用
                     item.setStatus(LotteryTaskResultVO.TaskStatus.SKIPPED);
                     item.setOk(false);
                     item.setMsg("已完成");
@@ -151,17 +160,16 @@ public class LotteryServiceImpl implements LotteryService {
                     log.warn("addLotteryTimes type={} 异常: {}", type, e.getMessage());
                 }
                 items.add(item);
-                // 实际发了上游请求 → 账号内任务间间隔 40s（降 WAF 风控）
-                sleepBetween(TASK_INTERVAL_MS);
             }
 
-            // 3.5) 看视频/看商城（OnAdViewed，独立于 AddLotteryTimes，带 HMAC sign，内部调用后 sleep 40s）
+            // 3.5) 看视频/看商城（OnAdViewed，独立于 AddLotteryTimes，带 HMAC sign）
             addAdViewTask(items, li, auth, "is_view_tp_ad", LotteryHttp.BUS_TYPE_VIEW_TP_AD, "看视频");
-            sleepBetween(TASK_INTERVAL_MS);
             addAdViewTask(items, li, auth, "is_view_douyin_mall", LotteryHttp.BUS_TYPE_VIEW_DOUYIN_MALL, "看商城");
-            sleepBetween(TASK_INTERVAL_MS);
 
-            // 3.6) 领累计阶梯奖移到批量编排阶段3（runAll），runTask 不再领，避免重复。
+            // 3.55) 每日签到（AddLotteryTimes type=1，无 lottery_info flag，用 40002 判已完成）
+            addSignInTask(items, auth);
+
+            // 3.6) 领累计阶梯奖由 /claim-step 单独做，runTask 不再领，避免重复。
 
             // 4) 刷后快照（统计数字，失败不丢明细，独立 try）
             try {
@@ -190,6 +198,10 @@ public class LotteryServiceImpl implements LotteryService {
 
     /**
      * draw 内部版：接收已解析的 auth（后台线程无 HTTP 上下文）。
+     * <p>
+     * 剩余可抽次数取 LotteryInfo.lottery_info.day_num（用户实测/App 展示一致）。
+     * 注意：GetLotteryProgress.lottery_count 是阶梯进度累计字段，不是剩余次数，
+     * 开红包循环勿再用 lottery_count（否则常为 0 导致空抽）。
      */
     private LotteryDrawResultVO drawInternal(AuthBundle bundle) {
         LoginStateEntity entity = bundle.entity;
@@ -200,15 +212,18 @@ public class LotteryServiceImpl implements LotteryService {
         List<LotteryDrawResultVO.DrawItem> prizes = new ArrayList<>();
         vo.setPrizes(prizes);
 
-        // 开前快照：失败 beforeCount=null，不影响抽奖循环（N 取 0）
+        // 开前快照：剩余次数 = day_num；失败 beforeCount=null → N 取 0
         Integer before = null;
         try {
-            before = getLotteryCount(lotteryHttp.getLotteryProgress(auth));
+            before = getDayNum(lotteryHttp.lotteryInfo(auth));
         } catch (Exception e) {
-            log.warn("开红包前 getLotteryProgress 失败（不影响抽奖）: {}", e.getMessage());
+            log.warn("开红包前 lotteryInfo 失败（不影响抽奖）: {}", e.getMessage());
         }
         vo.setBeforeCount(before);
         int n = before == null ? 0 : Math.min(before, DRAW_HARD_CAP);
+        if (n <= 0) {
+            log.info("开红包 silk_id={} day_num={}，无可抽次数", auth.getSilkId(), before);
+        }
 
         for (int i = 0; i < n; i++) {
             try {
@@ -236,11 +251,11 @@ public class LotteryServiceImpl implements LotteryService {
             }
         }
 
-        // 开后快照：失败 afterCount=null
+        // 开后快照：再读 day_num；失败 afterCount=null
         try {
-            vo.setAfterCount(getLotteryCount(lotteryHttp.getLotteryProgress(auth)));
+            vo.setAfterCount(getDayNum(lotteryHttp.lotteryInfo(auth)));
         } catch (Exception e) {
-            log.warn("开红包后 getLotteryProgress 失败（不影响明细）: {}", e.getMessage());
+            log.warn("开红包后 lotteryInfo 失败（不影响明细）: {}", e.getMessage());
         }
         return vo;
     }
@@ -386,6 +401,50 @@ public class LotteryServiceImpl implements LotteryService {
         if (progress == null) return null;
         JSONObject lp = progress.getJSONObject("lottery_progress");
         return lp == null ? null : lp.getInteger("lottery_count");
+    }
+
+    /**
+     * 从 LotteryInfo 取剩余可抽次数 day_num（开红包循环用）。
+     */
+    private Integer getDayNum(JSONObject lotteryInfo) {
+        if (lotteryInfo == null) return null;
+        JSONObject li = lotteryInfo.getJSONObject("lottery_info");
+        return li == null ? null : li.getInteger("day_num");
+    }
+
+    /**
+     * 每日签到（AddLotteryTimes type=1）。
+     * <p>
+     * lottery_info 无签到标志位，无法预判是否已签；每次尝试调用：
+     * code=0 → OK；code=40002「签到限一次」→ SKIPPED；其它 → FAIL。不中断整轮。
+     */
+    private void addSignInTask(List<LotteryTaskResultVO.TaskItem> items, LotteryAuth auth) {
+        LotteryTaskResultVO.TaskItem item = new LotteryTaskResultVO.TaskItem();
+        item.setType(TYPE_SIGN_IN);
+        item.setDesc(TYPE_TO_DESC.getOrDefault(TYPE_SIGN_IN, "每日签到"));
+        try {
+            JSONObject r = lotteryHttp.addLotteryTimes(auth, TYPE_SIGN_IN);
+            JSONObject status = r == null ? null : r.getJSONObject("status");
+            int code = status == null ? -1 : status.getIntValue("code");
+            if (code == 0) {
+                item.setStatus(LotteryTaskResultVO.TaskStatus.OK);
+                item.setOk(true);
+            } else if (code == CODE_SIGN_IN_ALREADY) {
+                item.setStatus(LotteryTaskResultVO.TaskStatus.SKIPPED);
+                item.setOk(false);
+                item.setMsg("已完成");
+            } else {
+                item.setStatus(LotteryTaskResultVO.TaskStatus.FAIL);
+                item.setOk(false);
+                item.setMsg(friendlyMsg(status == null ? null : status.getString("msg"), code));
+            }
+        } catch (Exception e) {
+            item.setStatus(LotteryTaskResultVO.TaskStatus.FAIL);
+            item.setOk(false);
+            item.setMsg(friendlyMsg(e.getMessage(), -1));
+            log.warn("addLotteryTimes type=1 每日签到异常: {}", e.getMessage());
+        }
+        items.add(item);
     }
 
     /**

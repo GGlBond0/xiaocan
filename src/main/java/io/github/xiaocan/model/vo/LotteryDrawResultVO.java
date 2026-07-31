@@ -7,8 +7,8 @@ import java.util.List;
 /**
  * 霸王餐开红包（执行抽奖）结果。
  * <p>
- * 用刷任务攒到的 lottery_count 循环调 SilkwormLotteryMobile.Lottery，把次数抽完。
- * 详见 .trellis/tasks/07-21-lottery-draw-redpack/。
+ * 用刷任务攒到的剩余次数（LotteryInfo.day_num）循环调 SilkwormLotteryMobile.Lottery，把次数抽完。
+ * 注意：day_num 才是剩余可抽次数；GetLotteryProgress.lottery_count 是阶梯进度，勿混用。
  */
 @Data
 public class LotteryDrawResultVO {
@@ -17,11 +17,11 @@ public class LotteryDrawResultVO {
      */
     private String authName;
     /**
-     * 开前抽奖机会数（GetLotteryProgress.lottery_count）
+     * 开前剩余抽奖次数（LotteryInfo.lottery_info.day_num）
      */
     private Integer beforeCount;
     /**
-     * 开后抽奖机会数
+     * 开后剩余抽奖次数（day_num）
      */
     private Integer afterCount;
     /**

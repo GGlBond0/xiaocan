@@ -21,7 +21,7 @@ public class LotteryController {
     private LotteryService lotteryService;
 
     /**
-     * 刷任务：完成未完成的浏览类任务，攒抽奖机会（账号内任务间 40s 间隔降风控）。
+     * 刷任务：完成未完成的浏览类任务，攒抽奖机会。
      */
     @PostMapping("/run")
     public BaseResult<LotteryTaskResultVO> runTask(@RequestParam Integer authId) {

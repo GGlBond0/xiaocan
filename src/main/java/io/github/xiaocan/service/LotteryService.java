@@ -15,7 +15,7 @@ public interface LotteryService {
     LotteryTaskResultVO runTask(Integer authId);
 
     /**
-     * 开红包：用攒到的抽奖机会（lottery_count）循环执行抽奖，直到抽完或失败。
+     * 开红包：用攒到的剩余次数（LotteryInfo.day_num）循环执行抽奖，直到抽完或失败。
      *
      * @param authId 登录态 id
      */

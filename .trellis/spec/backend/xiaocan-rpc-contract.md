@@ -141,7 +141,8 @@ App 版 `LotteryInfo` 额外返回 `lottery_times` 对象（各任务加几次�
 
 - **Good**：App 登录态 + `gwh` + `LotteryInfo` 返回 `code:0`，读 `lottery_info.day_num`/`lottery_progress.lottery_count`。
 - **Base**：`AddLotteryTimes` 未完成任务时返回 `code:0`，`day_num` +1，`lottery_count` 上涨。
-- **Bad**：已做过的任务 `AddLotteryTimes` 返回 `code:40040`（业务码）；`is_add_times=false` 当日已满走 HTTP 401；`Lottery`（执行抽奖）返回 `code:200001` 需风控验证。
+- **Bad**：已做过的任务 `AddLotteryTimes` 返回业务码（浏览类常见 `40040`；**签到 type=1 为 `40002`「签到限一次」**）；`is_add_times=false` 当日已满走 HTTP 401；`Lottery`（执行抽奖）返回 `code:200001` 需风控验证。
+- **Gotcha（签到）**：`lottery_info` **无** `is_sign*` 标志；不能靠 LotteryInfo 预判是否已签。runTask 每次尝试 `type=1`，`40002`→SKIPPED、`0`→OK。勿与 VIP `VipRightsService.SignInLottery`（需 VIP 级别，40013）或积分 `ActivityTask.SignIn` 混淆。
 
 ## 6. Tests Required
 
@@ -189,7 +190,7 @@ headers.put("X-Sivir", auth.getSivir());  // 必填
 | methodName | body | 用途 |
 |---|---|---|
 | `SilkwormLotteryMobile.LotteryInfo` | {silk_id} | 查机会来源（is_view_xxx 未完成项 + day_num + is_add_times + lottery_times） |
-| `SilkwormLotteryMobile.AddLotteryTimes` | {silk_id,type} | 完成浏览任务 +1 机会（无验证，type 2/8/9/10/11） |
+| `SilkwormLotteryMobile.AddLotteryTimes` | {silk_id,type} | 完成任务 +1 机会（无验证）。type：**1=每日签到**（2026-07-29 实测；已签 `code:40002`「签到限一次」，无 lottery_info flag）；2=分享, 8=美团红包, 9=饿了么红包, 10=福利页, 11=霸王餐页 |
 | `SilkwormLotteryMobile.OnAdViewed` | {silk_id,timestamp(秒),nonce,bus_type,sign} | 看视频/看商城完成上报 +1 机会（带 HMAC sign，2026-07-20 逆向） |
 | `SilkwormLotteryMobile.ReceiveExtraLottery` | {silk_id,step} | 领累计阶梯奖（step=1 first，step=2 second；40043=已领） |
 | `SilkwormLotteryMobile.GetLotteryProgress` | {silk_id} | 查 lottery_count + 阶梯 first/second_step_count + has_got_*_step_prize |
