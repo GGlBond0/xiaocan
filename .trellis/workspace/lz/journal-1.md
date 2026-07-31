@@ -985,3 +985,36 @@ B-4:XiaoChanServiceImpl distance null用nullsLast+name null防御(3处)。B-6:Pr
 ### Next Steps
 
 - None - task complete
+
+
+## Session 29: 复购活动 code107 识别与换号
+
+**Date**: 2026-07-31
+**Task**: 复购活动 code107 识别与换号
+**Branch**: `main`
+
+### Summary
+
+分析 HAR 确认复购不可强行下单；实现 if_repurchase_promotion 解析、code=107 文案/不重试、自动抢 107 换号；契约写入 xiaocan-rpc-contract。
+
+### Main Changes
+
+- Detailed change bullets were not supplied; see the summary above.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `185b4f4` | (see git log) |
+
+### Testing
+
+- Validation was not recorded for this session.
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

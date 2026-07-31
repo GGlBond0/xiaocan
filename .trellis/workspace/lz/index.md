@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 28
-- **Last Active**: 2026-07-21
+- **Total Sessions**: 29
+- **Last Active**: 2026-07-31
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~987 | Active |
+| `journal-1.md` | ~1020 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 29 | 2026-07-31 | 复购活动 code107 识别与换号 | `185b4f4` | `main` |
 | 28 | 2026-07-21 | 霸王餐开红包功能与WAF风控处理 | `37a3418`, `a52f230`, `063bc81` | `main` |
 | 27 | 2026-07-21 | 霸王餐新增看视频/看商城/领累计阶梯奖任务 | `7b11cb2` | `main` |
 | 26 | 2026-07-20 | 全面审查收尾+P1/P2修复上线 | `60e866d`, `f37072a`, `61a38b9`, `49f537b`, `ceb93aa` | `main` |
