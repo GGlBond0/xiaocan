@@ -8,24 +8,45 @@ import io.github.xiaocan.service.ProxyConfigService;
 import io.github.xiaocan.utils.SpringContextUtil;
 import lombok.extern.slf4j.Slf4j;
 
+import java.util.Iterator;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+
 /**
- * 代理持有者：从全局配置（数据库 proxy_config 表）读取代理 IP 拉取参数，TTL 缓存，失效可换。
+ * 代理持有者：从全局配置（数据库 proxy_config 表）读取代理 IP 拉取参数，按账号 key 分缓存。
  * 配置来源优先级：运行时读 ProxyConfigService.getEntity()（带内存快照缓存），
  * 异常或容器未就绪时回退 Spring Environment（systemd EnvironmentFile 注入）默认值。
  * 修改配置经 /api/proxy/config 落库后调用 invalidate() 即时生效，无需重启服务。
- * 对外方法签名不变，调用方（XiaochanHttp 等）零改动。
+ *
+ * 账号维度：
+ * - getProxy(accountKey, force)：同 key 在 TTL 内复用同一 IP；不同 key 独立缓存。
+ * - 无登录态/ silk_id=0 使用 key "shared"。
+ * - 失败换代理应 invalidate(accountKey)，避免拖垮其它账号缓存。
  *
  * 并发设计：
  * - getProxy 不在持锁期间执行同步 HTTP（最长 8s），避免阻塞 invalidate 与并发取代理；
- *   仅在读/写 cachedProxy 时短暂持锁。
+ *   仅在读/写 cache 时短暂持锁。
  * - loadCfg 不在持 ProxyHolder.class 锁时调用 ProxyConfigService，避免与
  *   ProxyConfigServiceImpl.updateConfig 形成反向锁顺序死锁。
  */
 @Slf4j
 public class ProxyHolder {
 
-    private static volatile String[] cachedProxy;
-    private static volatile long cachedAt;
+    /** 无账号/匿名请求共用 key */
+    public static final String SHARED_KEY = "shared";
+
+    private static final class CacheEntry {
+        final String[] proxy;
+        final long cachedAt;
+
+        CacheEntry(String[] proxy, long cachedAt) {
+            this.proxy = proxy;
+            this.cachedAt = cachedAt;
+        }
+    }
+
+    /** 按账号 key 缓存出口代理 */
+    private static final Map<String, CacheEntry> cacheByKey = new ConcurrentHashMap<>();
 
     /** 配置内存快照：减少运行时打 DB 频率 */
     private static volatile ProxyConfigEntity cfgSnapshot;
@@ -54,40 +75,84 @@ public class ProxyHolder {
     }
 
     /**
-     * 取代理：一次读取配置后，锁内仅查缓存，锁外执行 HTTP 拉取，锁内仅写回缓存。
-     * 避免慢 HTTP 长时间持锁阻塞 invalidate（保证保存后即时生效）。
+     * 兼容旧调用：等价于 getProxy(SHARED_KEY, force)。
      */
     public static String[] getProxy(boolean force) {
+        return getProxy(SHARED_KEY, force);
+    }
+
+    /**
+     * 按账号 key 取代理：一次读取配置后，查该 key 缓存，未命中则锁外 HTTP 拉取再写回。
+     * 避免慢 HTTP 长时间持锁阻塞 invalidate。
+     *
+     * @param accountKey 账号标识（silk_id 字符串）；null/blank/"0" 归一为 {@link #SHARED_KEY}
+     * @param force      true 时跳过缓存强制重取（重试换代理）
+     */
+    public static String[] getProxy(String accountKey, boolean force) {
         ProxyConfigEntity c = loadCfg();
         if (!enabledOf(c)) {
             return null;
         }
+        String key = normalizeKey(accountKey);
         long ttl = ttlOf(c) * 1000L;
 
-        // 锁内仅查缓存
-        String[] cached = readCache(force, ttl);
-        if (cached != null) {
-            return cached;
+        if (!force) {
+            String[] cached = readCache(key, ttl);
+            if (cached != null) {
+                return cached;
+            }
         }
 
         // 锁外执行同步 HTTP 拉取，避免持锁阻塞
         String[] p = fetchProxy(apiUrlOf(c));
         if (p != null) {
-            writeCache(p);
-            log.info("获取代理: {}:{}", p[0], p[1]);
+            writeCache(key, p);
+            log.info("获取代理 key={} {}:{}", key, p[0], p[1]);
         }
         return p;
     }
 
     /**
-     * 失效缓存：清代理缓存与配置快照，使下次取代理/读配置重读 DB。
+     * 仅失效指定账号的代理缓存（失败换代理用，不影响其它账号）。
+     */
+    public static void invalidate(String accountKey) {
+        String key = normalizeKey(accountKey);
+        cacheByKey.remove(key);
+        log.info("失效代理缓存 key={}", key);
+    }
+
+    /**
+     * 失效全部代理缓存与配置快照，使下次取代理/读配置重读 DB。
      * ProxyConfigServiceImpl.updateConfig 落库后调用本方法实现即时生效。
      */
     public static synchronized void invalidate() {
-        cachedProxy = null;
-        cachedAt = 0;
+        cacheByKey.clear();
         cfgSnapshot = null;
         cfgLoadedAt = 0;
+        log.info("失效全部代理缓存与配置快照");
+    }
+
+    /**
+     * 将 silk_id / 原始 key 归一为缓存 key。
+     * null、空串、"0" → shared（匿名/无登录态）。
+     */
+    public static String normalizeKey(String accountKey) {
+        if (accountKey == null) {
+            return SHARED_KEY;
+        }
+        String k = accountKey.trim();
+        if (k.isEmpty() || "0".equals(k)) {
+            return SHARED_KEY;
+        }
+        return k;
+    }
+
+    /** silk_id 数值 → 缓存 key */
+    public static String keyOfSilkId(Integer silkId) {
+        if (silkId == null || silkId == 0) {
+            return SHARED_KEY;
+        }
+        return String.valueOf(silkId);
     }
 
     // ---------- 配置读取（entity + Environment 兜底） ----------
@@ -143,18 +208,37 @@ public class ProxyHolder {
         }
     }
 
-    // ---------- 代理缓存读写（锁内仅做内存操作） ----------
+    // ---------- 代理缓存读写 ----------
 
-    private static synchronized String[] readCache(boolean force, long ttlMs) {
-        if (!force && cachedProxy != null && System.currentTimeMillis() - cachedAt < ttlMs) {
-            return cachedProxy;
+    private static String[] readCache(String key, long ttlMs) {
+        CacheEntry e = cacheByKey.get(key);
+        if (e == null) {
+            return null;
         }
-        return null;
+        if (System.currentTimeMillis() - e.cachedAt >= ttlMs) {
+            cacheByKey.remove(key, e);
+            return null;
+        }
+        return e.proxy;
     }
 
-    private static synchronized void writeCache(String[] proxy) {
-        cachedProxy = proxy;
-        cachedAt = System.currentTimeMillis();
+    private static void writeCache(String key, String[] proxy) {
+        cacheByKey.put(key, new CacheEntry(proxy, System.currentTimeMillis()));
+        // 轻量清理过期项，避免长期堆积（账号数通常很少，顺带扫一遍）
+        if (cacheByKey.size() > 64) {
+            pruneExpired(ttlOf(loadCfg()) * 1000L);
+        }
+    }
+
+    private static void pruneExpired(long ttlMs) {
+        long now = System.currentTimeMillis();
+        Iterator<Map.Entry<String, CacheEntry>> it = cacheByKey.entrySet().iterator();
+        while (it.hasNext()) {
+            Map.Entry<String, CacheEntry> en = it.next();
+            if (now - en.getValue().cachedAt >= ttlMs) {
+                it.remove();
+            }
+        }
     }
 
     /**

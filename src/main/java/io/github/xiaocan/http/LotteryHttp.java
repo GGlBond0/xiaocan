@@ -100,10 +100,11 @@ public class LotteryHttp {
     }
 
     /**
-     * 完成浏览任务 +1 抽奖机会（无验证，纯接口可刷）。
+     * 完成浏览/签到任务 +1 抽奖机会（无验证，纯接口可刷）。
      *
      * @param auth 登录态
-     * @param type 浏览任务类型（2=分享, 8=领美团红包, 9=领饿了么红包, 10=浏览福利页, 11=浏览霸王餐页，详见 research/type-map.md）
+     * @param type 任务类型：1=每日签到（2026-07-29 实测，已签返回 code=40002）；
+     *             2=分享, 8=领美团红包, 9=领饿了么红包, 10=浏览福利页, 11=浏览霸王餐页
      */
     public JSONObject addLotteryTimes(LotteryAuth auth, int type) {
         Map<String, Object> body = baseBody(auth);
@@ -209,10 +210,11 @@ public class LotteryHttp {
         Long timeMillis = System.currentTimeMillis();
         String nami = getNami(String.valueOf(auth.getSilkId()));
         String ashe = getAshe(timeMillis, serverName, methodName, nami);
+        String accountKey = ProxyHolder.keyOfSilkId(auth.getSilkId());
         HttpResponse response = executeWithProxy(proxy -> HttpUtil.createPost(BASE_URL)
                 .headerMap(getAndroidHeaders(timeMillis, ashe, serverName, methodName, nami, auth), true)
                 .timeout(ProxyHolder.requestTimeout())
-                .body(body), tag);
+                .body(body), tag, accountKey);
         if (response == null || !response.isOk()) {
             int status = response == null ? -1 : response.getStatus();
             String rb = response == null ? "" : response.body();
@@ -248,16 +250,19 @@ public class LotteryHttp {
 
     /**
      * 经代理执行上游 HTTP 请求；代理未启用则直连。
-     * 403/网络异常 → 失效代理并换代理重试（与 XiaochanHttp.executeWithProxy 同逻辑）；
+     * 403/网络异常 → 仅失效当前账号代理并换代理重试（与 XiaochanHttp.executeWithProxy 同逻辑）；
      * 401 → 业务拒绝（当日次数已满等），直接返回不重试。
+     *
+     * @param accountKey 账号缓存 key（silk_id），失败换代理只动该 key
      */
-    private HttpResponse executeWithProxy(Function<String[], HttpRequest> reqFn, String tag) {
+    private HttpResponse executeWithProxy(Function<String[], HttpRequest> reqFn, String tag, String accountKey) {
         if (!ProxyHolder.enabled()) {
             return reqFn.apply(null).execute();
         }
+        String key = ProxyHolder.normalizeKey(accountKey);
         int retry = ProxyHolder.retry();
         for (int i = 0; i < retry; i++) {
-            String[] proxy = ProxyHolder.getProxy(i > 0);
+            String[] proxy = ProxyHolder.getProxy(key, i > 0);
             if (proxy == null) {
                 throw new BusinessException("代理不可用，无法请求小蚕网关");
             }
@@ -267,21 +272,24 @@ public class LotteryHttp {
             try {
                 response = req.execute();
             } catch (Exception e) {
-                log.warn("{} 经代理 {}:{} 请求异常，换代理重试({}/{}): {}", tag, proxy[0], proxy[1], i + 1, retry, e.getMessage());
-                ProxyHolder.invalidate();
+                log.warn("{} key={} 经代理 {}:{} 请求异常，换代理重试({}/{}): {}",
+                        tag, key, proxy[0], proxy[1], i + 1, retry, e.getMessage());
+                ProxyHolder.invalidate(key);
                 continue;
             }
             if (response.getStatus() == 403) {
                 // 2026-07-21：403 多为 WAF 账号级封禁（按账号+端点封，换代理无效）。
                 // 判定为 WAF 拦截则直接返回不重试（避免换代理放大请求量加重封禁）；
-                // 非判定 WAF 的 403 保留原换代理逻辑（代理坏的情况）。
+                // 非判定 WAF 的 403 保留原换代理逻辑（代理坏的情况，仅换本账号）。
                 if (isWafBlock(response.body())) {
-                    log.warn("{} 经代理 {}:{} 返回 403 WAF风控，停止重试（账号级封禁）", tag, proxy[0], proxy[1]);
+                    log.warn("{} key={} 经代理 {}:{} 返回 403 WAF风控，停止重试（账号级封禁）",
+                            tag, key, proxy[0], proxy[1]);
                     return response;
                 }
-                log.warn("{} 经代理 {}:{} 返回 403，换代理重试({}/{})", tag, proxy[0], proxy[1], i + 1, retry);
+                log.warn("{} key={} 经代理 {}:{} 返回 403，换代理重试({}/{})",
+                        tag, key, proxy[0], proxy[1], i + 1, retry);
                 response.close();
-                ProxyHolder.invalidate();
+                ProxyHolder.invalidate(key);
                 continue;
             }
             if (response.getStatus() == 401) {
