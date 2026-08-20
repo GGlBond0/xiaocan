@@ -1,6 +1,7 @@
 package io.github.xiaocan.model.vo;
 
 import io.github.xiaocan.model.enums.MonitorTypeEnums;
+import io.github.xiaocan.model.enums.StoreTypeEnum;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
@@ -16,6 +17,14 @@ public class StorePushedHistoryVO {
 
 
     private Integer userId;
+
+    /**
+     * 收藏关联所需字段（L0/L1 合并加，纯 VO 展示/收藏关联读取，不写库）
+     */
+    private Long locationId;
+    private String uniqId;
+    private StoreTypeEnum storeTypeEnum;
+    private Long favoriteId;
 
     private MonitorTypeEnums notifyType;
     /**
