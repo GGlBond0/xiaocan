@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 import io.github.xiaocan.model.enums.MonitorTypeEnums;
+import io.github.xiaocan.model.enums.StoreTypeEnum;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -31,6 +32,14 @@ public class StorePushedHistoryEntity {
      * 批量插入时的批次ID（UUID去-）
      */
     private String batchId;
+
+    /**
+     * 收藏关联所需字段（L0/L1 合并加，纯 VO 展示/收藏关联读取，不写库）
+     */
+    private Long locationId;
+    private String uniqId;
+    private StoreTypeEnum storeTypeEnum;
+    private Long favoriteId;
 
     private Integer userId;
 
