@@ -2,7 +2,12 @@ package io.github.xiaocan.service.impl;
 
 import io.github.xiaocan.http.XiaochanHttp;
 import io.github.xiaocan.model.StoreInfo;
+import io.github.xiaocan.model.dto.XcMeituanshangjinDTO;
 import io.github.xiaocan.model.vo.QueryListVO;
+import io.github.xiaocan.model.vo.XcMeituanshangjinPageVO;
+import io.github.xiaocan.service.FavoriteStoreService;
+import io.github.xiaocan.service.StoreInventoryHistoryService;
+import io.github.xiaocan.service.UserService;
 import io.github.xiaocan.service.XiaoChanService;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
@@ -44,6 +49,16 @@ public class XiaoChanServiceImpl implements XiaoChanService {
     @Lazy
     private XiaoChanService xiaoChanService;
 
+    @Resource
+    private StoreInventoryHistoryService storeInventoryHistoryService;
+
+    @Lazy
+    @Resource
+    private FavoriteStoreService favoriteStoreService;
+
+    @Resource
+    private UserService userService;
+
     @Override
     public List<StoreInfo> query(QueryListVO queryListVO) {
         List<StoreInfo> result;
@@ -80,7 +95,9 @@ public class XiaoChanServiceImpl implements XiaoChanService {
 
     @Override
     public List<StoreInfo> searchList(String keyword, Integer cityCode, String longitude, String latitude) {
-        return xiaochanHttp.searchList(keyword, cityCode, longitude, latitude, 0, 15);
+        List<StoreInfo> storeInfos = xiaochanHttp.searchList(keyword, cityCode, longitude, latitude, 0, 15);
+        storeInventoryHistoryService.insertBatch(storeInfos);
+        return storeInfos;
     }
 
 
@@ -107,6 +124,26 @@ public class XiaoChanServiceImpl implements XiaoChanService {
     public List<StoreInfo> getListByOffset(Integer cityCode, String longitude, String latitude, int offset) {
         return doGetList(cityCode, longitude, latitude, offset);
     }
+
+    @Override
+    public XcMeituanshangjinPageVO getXcMeituanshangjinPageVO(XcMeituanshangjinDTO dto) {
+        XcMeituanshangjinPageVO vo = new XcMeituanshangjinPageVO();
+        List<StoreInfo> storeInfos;
+        if (StringUtils.isNotBlank(dto.getName())) {
+            // 走搜索接口
+            storeInfos = xiaochanHttp.searchMeituanList(dto.getLongitude(), dto.getLatitude(), dto.getName(), dto.getPvId());
+        } else {
+            storeInfos = xiaochanHttp.getMeituanList(dto.getLongitude(), dto.getLatitude(), dto.getPvId());
+        }
+        vo.setStoreInfos(storeInfos);
+        // 填充收藏ID
+        if (dto.getLocationId() != null && storeInfos != null) {
+            Integer userId = userService.getByCurrentRequest().getId();
+            favoriteStoreService.fillFavoriteIds(storeInfos, userId, dto.getLocationId());
+        }
+        return vo;
+    }
+
     private boolean hasNext(List<StoreInfo> list){
         if (list.size() < DEFAULT_PAGE_SIZE) {
             return false;

@@ -1,7 +1,9 @@
 package io.github.xiaocan.service;
 
 import io.github.xiaocan.model.StoreInfo;
+import io.github.xiaocan.model.dto.XcMeituanshangjinDTO;
 import io.github.xiaocan.model.vo.QueryListVO;
+import io.github.xiaocan.model.vo.XcMeituanshangjinPageVO;
 
 import java.util.List;
 
@@ -53,4 +55,12 @@ public interface XiaoChanService {
      */
 
     List<StoreInfo> query(QueryListVO queryListVO);
+
+    /**
+     * 获取小蚕美团赏金门店列表（支持关键词搜索与翻页游标 pvId）
+     *
+     * @param dto 请求参数（name 非空走搜索接口，否则走全量列表接口）
+     * @return 美团赏金门店列表 + 翻页游标
+     */
+    XcMeituanshangjinPageVO getXcMeituanshangjinPageVO(XcMeituanshangjinDTO dto);
 }

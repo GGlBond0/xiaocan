@@ -39,10 +39,9 @@ public class FavoriteStoreServiceImpl extends ServiceImpl<FavoriteStoreMapper, F
     private LocationService locationService;
     @Resource
     private XiaoChanService xiaoChanService;
-    // TODO(L3/Task7): restore when WmmtService (L3) lands
-    // @Resource
-    // @Lazy
-    // private WmmtService wmmtService;
+    @Resource
+    @Lazy
+    private WmmtService wmmtService;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -161,20 +160,18 @@ public class FavoriteStoreServiceImpl extends ServiceImpl<FavoriteStoreMapper, F
             if (StoreTypeEnum.XC_MANJIAN.equals(storeType)) {
                 storeInfos = xiaoChanService.searchList(name, location.getCityCode(), longitude, latitude);
             } else if (StoreTypeEnum.XC_MTSJ.equals(storeType)) {
-                // TODO(L3/Task6): restore when XiaoChanService.getXcMeituanshangjinPageVO lands (L3)
-                // XcMeituanshangjinDTO dto = new XcMeituanshangjinDTO();
-                // dto.setLongitude(longitude);
-                // dto.setLatitude(latitude);
-                // dto.setName(name);
-                // dto.setPvId("");
-                // storeInfos = xiaoChanService.getXcMeituanshangjinPageVO(dto).getStoreInfos();
+                XcMeituanshangjinDTO dto = new XcMeituanshangjinDTO();
+                dto.setLongitude(longitude);
+                dto.setLatitude(latitude);
+                dto.setName(name);
+                dto.setPvId("");
+                storeInfos = xiaoChanService.getXcMeituanshangjinPageVO(dto).getStoreInfos();
             }else if (StoreTypeEnum.WM_MANJIAN.equals(storeType) || StoreTypeEnum.WM_MTSJ.equals(storeType)) {
-                // TODO(L3/Task7): restore when WmmtService.getShopList lands (L3)
-                // WmmtShopListDTO dto = new WmmtShopListDTO();
-                // dto.setName(name);
-                // dto.setLongitude(longitude);
-                // dto.setLatitude(latitude);
-                // storeInfos = wmmtService.getShopList(dto).getStoreInfos();
+                WmmtShopListDTO dto = new WmmtShopListDTO();
+                dto.setName(name);
+                dto.setLongitude(longitude);
+                dto.setLatitude(latitude);
+                storeInfos = wmmtService.getShopList(dto).getStoreInfos();
             }
             return storeInfos.stream()
                     .filter(item -> Objects.equals(item.getUniqId(), favorite.getUniqId()))
