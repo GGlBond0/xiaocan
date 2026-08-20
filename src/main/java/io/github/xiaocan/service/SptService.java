@@ -26,6 +26,17 @@ public class SptService {
     private static final int CODE_LENGTH = 6;
 
     /**
+     * 发送消息
+     *
+     * @param spt     用户spt标识
+     * @param content 消息内容
+     * @param summary 消息摘要
+     */
+    public void sendMessage(String spt, String content, String summary) {
+        MessageHttp.sendMessage(spt, content, summary);
+    }
+
+    /**
      * 发送验证码
      *
      * @param spt 用户spt标识

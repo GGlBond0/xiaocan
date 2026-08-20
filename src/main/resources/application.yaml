@@ -29,3 +29,6 @@ mybatis-plus:
       logic-delete-field: deleted
       logic-delete-value: 1
       logic-not-delete-value: 0
+
+system:
+  web-url: ${SYSTEM_WEB_URL:} # web url，末尾不带/
