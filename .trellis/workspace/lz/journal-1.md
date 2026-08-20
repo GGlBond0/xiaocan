@@ -1018,3 +1018,36 @@ B-4:XiaoChanServiceImpl distance null用nullsLast+name null防御(3处)。B-6:Pr
 ### Next Steps
 
 - None - task complete
+
+
+## Session 30: 白金隧道池接入生产代理
+
+**Date**: 2026-08-21
+**Task**: 白金隧道池接入生产代理
+**Branch**: `main`
+
+### Summary
+
+移除1024proxy网关(小蚕不支持境外IP)，只留国内IP提取模式；适配xiequ白金隧道池按账号key轮询分配不同隧道端口实现独立出口。提交eb8014e含ProxyHolder去网关+隧道slot分配+ProxySpec简化+删ProxyAuth+两HTTP调用方Supplier重构。打包BUILD SUCCESS，部署生产，DB proxy_config改白金隧道链接，实测query返回30家店200。生产机直连已403被WAF封，走隧道必需。
+
+### Main Changes
+
+- Detailed change bullets were not supplied; see the summary above.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `eb8014e` | (see git log) |
+
+### Testing
+
+- Validation was not recorded for this session.
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
