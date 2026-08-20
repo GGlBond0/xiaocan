@@ -13,7 +13,7 @@ import lombok.extern.slf4j.Slf4j;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Random;
-import java.util.function.Function;
+import java.util.function.Supplier;
 
 /**
  * 小蚕霸王餐抽奖 RPC 调用（App / Android 登录态）。
@@ -211,7 +211,7 @@ public class LotteryHttp {
         String nami = getNami(String.valueOf(auth.getSilkId()));
         String ashe = getAshe(timeMillis, serverName, methodName, nami);
         String accountKey = ProxyHolder.keyOfSilkId(auth.getSilkId());
-        HttpResponse response = executeWithProxy(proxy -> HttpUtil.createPost(BASE_URL)
+        HttpResponse response = executeWithProxy(() -> HttpUtil.createPost(BASE_URL)
                 .headerMap(getAndroidHeaders(timeMillis, ashe, serverName, methodName, nami, auth), true)
                 .timeout(ProxyHolder.requestTimeout())
                 .body(body), tag, accountKey);
@@ -255,25 +255,25 @@ public class LotteryHttp {
      *
      * @param accountKey 账号缓存 key（silk_id），失败换代理只动该 key
      */
-    private HttpResponse executeWithProxy(Function<String[], HttpRequest> reqFn, String tag, String accountKey) {
+    private HttpResponse executeWithProxy(Supplier<HttpRequest> reqFn, String tag, String accountKey) {
         if (!ProxyHolder.enabled()) {
-            return reqFn.apply(null).execute();
+            return reqFn.get().execute();
         }
         String key = ProxyHolder.normalizeKey(accountKey);
         int retry = ProxyHolder.retry();
         for (int i = 0; i < retry; i++) {
-            String[] proxy = ProxyHolder.getProxy(key, i > 0);
-            if (proxy == null) {
+            ProxySpec spec = ProxyHolder.getProxy(key, i > 0);
+            if (spec == null) {
                 throw new BusinessException("代理不可用，无法请求小蚕网关");
             }
-            HttpRequest req = reqFn.apply(proxy);
-            req.setHttpProxy(proxy[0], Integer.parseInt(proxy[1]));
+            HttpRequest req = reqFn.get();
             HttpResponse response;
             try {
+                ProxyHolder.attach(req, spec);
                 response = req.execute();
             } catch (Exception e) {
                 log.warn("{} key={} 经代理 {}:{} 请求异常，换代理重试({}/{}): {}",
-                        tag, key, proxy[0], proxy[1], i + 1, retry, e.getMessage());
+                        tag, key, spec.getHost(), spec.getPort(), i + 1, retry, e.getMessage());
                 ProxyHolder.invalidate(key);
                 continue;
             }
@@ -283,11 +283,11 @@ public class LotteryHttp {
                 // 非判定 WAF 的 403 保留原换代理逻辑（代理坏的情况，仅换本账号）。
                 if (isWafBlock(response.body())) {
                     log.warn("{} key={} 经代理 {}:{} 返回 403 WAF风控，停止重试（账号级封禁）",
-                            tag, key, proxy[0], proxy[1]);
+                            tag, key, spec.getHost(), spec.getPort());
                     return response;
                 }
                 log.warn("{} key={} 经代理 {}:{} 返回 403，换代理重试({}/{})",
-                        tag, key, proxy[0], proxy[1], i + 1, retry);
+                        tag, key, spec.getHost(), spec.getPort(), i + 1, retry);
                 response.close();
                 ProxyHolder.invalidate(key);
                 continue;

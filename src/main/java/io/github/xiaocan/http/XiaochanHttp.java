@@ -15,7 +15,7 @@ import org.springframework.beans.BeanUtils;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.*;
-import java.util.function.Function;
+import java.util.function.Supplier;
 
 @Slf4j
 public class XiaochanHttp {
@@ -70,7 +70,7 @@ public class XiaochanHttp {
         String nami = getNami();
         String ashe = getAshe(timeMillis, serverName, methodName,nami);
         // 无登录态列表/搜索：共用 shared 出口
-        HttpResponse response = executeWithProxy(proxy -> HttpUtil.createPost(url)
+        HttpResponse response = executeWithProxy(() -> HttpUtil.createPost(url)
                 .headerMap(getHeaders(timeMillis, ashe, cityCode, serverName, methodName, nami), true)
                 .timeout(ProxyHolder.requestTimeout())
                 .body(body), "postWithRes", ProxyHolder.SHARED_KEY);
@@ -88,36 +88,36 @@ public class XiaochanHttp {
      * 经代理执行上游 HTTP 请求；代理未启用则直连。
      * 遇 403 或网络异常（SocketTimeout/Connection reset 等）仅失效当前账号代理并换代理重试，
      * 最多 {@link ProxyHolder#retry()} 次；全部失败返回 null 由调用方处理。
-     * @param reqFn      接收 proxy（[ip,port]，直连时为 null），返回待执行的 HttpRequest
+     * @param reqFn      返回待执行的 HttpRequest
      * @param tag        日志标识（方法名）
      * @param accountKey 账号缓存 key（silk_id 或 shared）
      */
-    private HttpResponse executeWithProxy(Function<String[], HttpRequest> reqFn, String tag, String accountKey) {
+    private HttpResponse executeWithProxy(Supplier<HttpRequest> reqFn, String tag, String accountKey) {
         if (!ProxyHolder.enabled()) {
-            return reqFn.apply(null).execute();
+            return reqFn.get().execute();
         }
         String key = ProxyHolder.normalizeKey(accountKey);
         int retry = ProxyHolder.retry();
         for (int i = 0; i < retry; i++) {
-            String[] proxy = ProxyHolder.getProxy(key, i > 0);
-            if (proxy == null) {
+            ProxySpec spec = ProxyHolder.getProxy(key, i > 0);
+            if (spec == null) {
                 throw new BusinessException("代理不可用，无法请求小蚕网关");
             }
-            HttpRequest req = reqFn.apply(proxy);
-            req.setHttpProxy(proxy[0], Integer.parseInt(proxy[1]));
+            HttpRequest req = reqFn.get();
             HttpResponse response;
             try {
+                ProxyHolder.attach(req, spec);
                 response = req.execute();
             } catch (Exception e) {
                 // SocketTimeoutException / Connection reset 等网络异常：仅失效本账号代理并换代理重试
                 log.warn("{} key={} 经代理 {}:{} 请求异常，换代理重试({}/{}): {}",
-                        tag, key, proxy[0], proxy[1], i + 1, retry, e.getMessage());
+                        tag, key, spec.getHost(), spec.getPort(), i + 1, retry, e.getMessage());
                 ProxyHolder.invalidate(key);
                 continue;
             }
             if (response.getStatus() == 403) {
                 log.warn("{} key={} 经代理 {}:{} 返回 403，换代理重试({}/{})",
-                        tag, key, proxy[0], proxy[1], i + 1, retry);
+                        tag, key, spec.getHost(), spec.getPort(), i + 1, retry);
                 response.close();
                 ProxyHolder.invalidate(key);
                 continue;
@@ -140,7 +140,7 @@ public class XiaochanHttp {
         String nami = getNami();
         String ashe = getAshe(timeMillis, serverName, methodName,nami);
         try {
-            HttpResponse response = executeWithProxy(proxy -> HttpUtil.createPost(BASE_URL)
+            HttpResponse response = executeWithProxy(() -> HttpUtil.createPost(BASE_URL)
                     .headerMap(getHeaders(timeMillis, ashe, cityCode, serverName, methodName,nami), true)
                     .timeout(ProxyHolder.requestTimeout())
                     .body(JSONObject.toJSONString(bodyMap)), "searchAddress", ProxyHolder.SHARED_KEY);
@@ -384,7 +384,7 @@ public class XiaochanHttp {
         String nami = (auth.getNami() != null && !auth.getNami().isEmpty()) ? auth.getNami() : getNami();
         String ashe = getAshe(timeMillis, serverName, methodName, nami);
         String accountKey = ProxyHolder.keyOfSilkId(auth == null ? null : auth.getSilkId());
-        HttpResponse response = executeWithProxy(proxy -> HttpUtil.createPost(url)
+        HttpResponse response = executeWithProxy(() -> HttpUtil.createPost(url)
                 .headerMap(getGrabHeaders(timeMillis, ashe, cityCode, serverName, methodName, nami, auth), true)
                 .timeout(ProxyHolder.requestTimeout())
                 .body(body), "grabPromotionQuota", accountKey);

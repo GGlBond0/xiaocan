@@ -1,5 +1,7 @@
 package io.github.xiaocan.http;
 
+import cn.hutool.http.HttpRequest;
+import cn.hutool.http.HttpResponse;
 import cn.hutool.http.HttpUtil;
 import com.alibaba.fastjson2.JSONArray;
 import com.alibaba.fastjson2.JSONObject;
@@ -8,15 +10,25 @@ import io.github.xiaocan.service.ProxyConfigService;
 import io.github.xiaocan.utils.SpringContextUtil;
 import lombok.extern.slf4j.Slf4j;
 
+import java.net.InetSocketAddress;
+import java.net.Proxy;
+import java.util.ArrayList;
 import java.util.Iterator;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * 代理持有者：从全局配置（数据库 proxy_config 表）读取代理 IP 拉取参数，按账号 key 分缓存。
+ * 代理持有者：从全局配置（数据库 proxy_config 表）读取代理参数，按账号 key 分缓存。
  * 配置来源优先级：运行时读 ProxyConfigService.getEntity()（带内存快照缓存），
  * 异常或容器未就绪时回退 Spring Environment（systemd EnvironmentFile 注入）默认值。
  * 修改配置经 /api/proxy/config 落库后调用 invalidate() 即时生效，无需重启服务。
+ *
+ * 仅支持【提取模式】：api_url 为提取接口地址，GET 返回国内 IP:Port（小蚕仅支持国内 IP，
+ * 不支持境外 IP / 带鉴权的代理网关）。
+ * - 纯文本 ip:port（如 xiequ）按 SOCKS5 使用；
+ * - 旧 bilinip JSON（{code,data:[{IP,Port}]}）按 HTTP 使用。
  *
  * 账号维度：
  * - getProxy(accountKey, force)：同 key 在 TTL 内复用同一 IP；不同 key 独立缓存。
@@ -24,7 +36,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * - 失败换代理应 invalidate(accountKey)，避免拖垮其它账号缓存。
  *
  * 并发设计：
- * - getProxy 不在持锁期间执行同步 HTTP（最长 8s），避免阻塞 invalidate 与并发取代理；
+ * - getProxy 不在持锁期间执行同步 HTTP，避免阻塞 invalidate 与并发取代理；
  *   仅在读/写 cache 时短暂持锁。
  * - loadCfg 不在持 ProxyHolder.class 锁时调用 ProxyConfigService，避免与
  *   ProxyConfigServiceImpl.updateConfig 形成反向锁顺序死锁。
@@ -36,12 +48,34 @@ public class ProxyHolder {
     public static final String SHARED_KEY = "shared";
 
     private static final class CacheEntry {
+        /** 缓存的 IP:Port */
         final String[] proxy;
+        /** 代理协议；xiequ plain ip:port 是 SOCKS5，旧 JSON 默认 HTTP */
+        final Proxy.Type proxyType;
+        /** 隧道池模式下本次分配到的列表索引；普通模式 -1 */
+        final int endpointIndex;
         final long cachedAt;
 
-        CacheEntry(String[] proxy, long cachedAt) {
+        CacheEntry(String[] proxy, Proxy.Type proxyType, int endpointIndex, long cachedAt) {
             this.proxy = proxy;
+            this.proxyType = proxyType;
+            this.endpointIndex = endpointIndex;
             this.cachedAt = cachedAt;
+        }
+    }
+
+    /** 提取到的端点列表槽位游标：按账号 key 轮流分配不同隧道端口（实现每账号独立出口） */
+    private static final AtomicInteger ROUND_ROBIN = new AtomicInteger(0);
+
+    private static final class ExtractProxy {
+        final String host;
+        final int port;
+        final Proxy.Type type;
+
+        ExtractProxy(String host, int port, Proxy.Type type) {
+            this.host = host;
+            this.port = port;
+            this.type = type;
         }
     }
 
@@ -75,41 +109,32 @@ public class ProxyHolder {
     }
 
     /**
-     * 兼容旧调用：等价于 getProxy(SHARED_KEY, force)。
-     */
-    public static String[] getProxy(boolean force) {
-        return getProxy(SHARED_KEY, force);
-    }
-
-    /**
-     * 按账号 key 取代理：一次读取配置后，查该 key 缓存，未命中则锁外 HTTP 拉取再写回。
-     * 避免慢 HTTP 长时间持锁阻塞 invalidate。
+     * 按账号 key 取代理（仅提取模式）。未命中则锁外 HTTP 拉取再写回。
      *
      * @param accountKey 账号标识（silk_id 字符串）；null/blank/"0" 归一为 {@link #SHARED_KEY}
      * @param force      true 时跳过缓存强制重取（重试换代理）
      */
-    public static String[] getProxy(String accountKey, boolean force) {
+    public static ProxySpec getProxy(String accountKey, boolean force) {
         ProxyConfigEntity c = loadCfg();
         if (!enabledOf(c)) {
             return null;
         }
-        String key = normalizeKey(accountKey);
-        long ttl = ttlOf(c) * 1000L;
+        return getExtractProxy(normalizeKey(accountKey), force, c, apiUrlOf(c));
+    }
 
-        if (!force) {
-            String[] cached = readCache(key, ttl);
-            if (cached != null) {
-                return cached;
-            }
+    /**
+     * 把 HTTP 或 SOCKS5 代理挂到 Hutool 请求上。国内 IP 代理无鉴权，无需认证。
+     */
+    public static void attach(HttpRequest req, ProxySpec spec) {
+        if (req == null || spec == null) {
+            return;
         }
-
-        // 锁外执行同步 HTTP 拉取，避免持锁阻塞
-        String[] p = fetchProxy(apiUrlOf(c));
-        if (p != null) {
-            writeCache(key, p);
-            log.info("获取代理 key={} {}:{}", key, p[0], p[1]);
+        if (spec.isSocks5()) {
+            req.setProxy(new Proxy(Proxy.Type.SOCKS,
+                    new InetSocketAddress(spec.getHost(), spec.getPort())));
+        } else {
+            req.setHttpProxy(spec.getHost(), spec.getPort());
         }
-        return p;
     }
 
     /**
@@ -155,6 +180,33 @@ public class ProxyHolder {
         return String.valueOf(silkId);
     }
 
+    // ---------- 提取模式 ----------
+
+    private static ProxySpec getExtractProxy(String key, boolean force, ProxyConfigEntity c, String apiUrl) {
+        long ttl = ttlOf(c) * 1000L;
+        if (!force) {
+            CacheEntry cached = readCache(key, ttl);
+            if (cached != null) {
+                Proxy.Type type = cached.proxyType == null ? Proxy.Type.HTTP : cached.proxyType;
+                return new ProxySpec(cached.proxy[0], Integer.parseInt(cached.proxy[1]), type);
+            }
+        }
+        List<ExtractProxy> list = fetchProxyList(apiUrl);
+        if (list == null || list.isEmpty()) {
+            return null;
+        }
+        // 按账号 key 轮流分配列表槽位：主账号各走不同隧道端口 = 独立轮换出口
+        int index = Math.floorMod(ROUND_ROBIN.getAndIncrement(), list.size());
+        ExtractProxy p = list.get(index);
+        cacheByKey.put(key, new CacheEntry(new String[]{p.host, String.valueOf(p.port)},
+                p.type, index, System.currentTimeMillis()));
+        log.info("获取代理 key={} {}:{} type={} slot={}/{}", key, p.host, p.port, p.type, index, list.size());
+        if (cacheByKey.size() > 64) {
+            pruneExpired(ttl);
+        }
+        return new ProxySpec(p.host, p.port, p.type);
+    }
+
     // ---------- 配置读取（entity + Environment 兜底） ----------
 
     private static boolean enabledOf(ProxyConfigEntity c) {
@@ -189,7 +241,6 @@ public class ProxyHolder {
         if (snap != null && System.currentTimeMillis() - cfgLoadedAt < CFG_TTL) {
             return snap;
         }
-        // 锁外调 service 取最新 entity
         ProxyConfigEntity entity = null;
         try {
             ProxyConfigService service = SpringContextUtil.getBean(ProxyConfigService.class);
@@ -200,7 +251,6 @@ public class ProxyHolder {
         if (entity == null) {
             return null;
         }
-        // 锁内仅写快照
         synchronized (ProxyHolder.class) {
             cfgSnapshot = entity;
             cfgLoadedAt = System.currentTimeMillis();
@@ -210,24 +260,16 @@ public class ProxyHolder {
 
     // ---------- 代理缓存读写 ----------
 
-    private static String[] readCache(String key, long ttlMs) {
+    private static CacheEntry readCache(String key, long ttlMs) {
         CacheEntry e = cacheByKey.get(key);
-        if (e == null) {
+        if (e == null || e.proxy == null) {
             return null;
         }
         if (System.currentTimeMillis() - e.cachedAt >= ttlMs) {
             cacheByKey.remove(key, e);
             return null;
         }
-        return e.proxy;
-    }
-
-    private static void writeCache(String key, String[] proxy) {
-        cacheByKey.put(key, new CacheEntry(proxy, System.currentTimeMillis()));
-        // 轻量清理过期项，避免长期堆积（账号数通常很少，顺带扫一遍）
-        if (cacheByKey.size() > 64) {
-            pruneExpired(ttlOf(loadCfg()) * 1000L);
-        }
+        return e;
     }
 
     private static void pruneExpired(long ttlMs) {
@@ -242,43 +284,115 @@ public class ProxyHolder {
     }
 
     /**
-     * 拉取代理 IP：整体兜底解析异常，任何异常都返回 null（视为无可用代理），
+     * 拉取代理端点列表：整体兜底解析异常，任何异常都返回 null（视为无可用代理），
      * 由调用方走重试/换代理路径，避免异常冒泡中断请求处理。
+     *
+     * 返回多个端点供按账号分配：白金隧道池提取的 JSON data 含多个 {IP,Port}，
+     * 入口 IP 同段、端口各异，可让不同账号走不同端口（= 不同轮换出口）。
+     * 纯文本 ip:port（普通直达代理）退化为单元素列表。
      */
-    private static String[] fetchProxy(String url) {
+    private static List<ExtractProxy> fetchProxyList(String url) {
         if (url == null || url.isEmpty()) {
             log.error("PROXY_API_URL 未配置，无法取代理");
             return null;
         }
         String body;
-        try {
-            body = HttpUtil.createGet(url).timeout(8000).execute().body();
+        try (HttpResponse response = HttpUtil.createGet(url).timeout(8000).execute()) {
+            body = response.body();
         } catch (Exception e) {
-            log.error("代理 API 请求异常: {}", e.getMessage());
+            log.error("代理 API 请求异常: {}", e.getClass().getSimpleName());
+            return null;
+        }
+        String plainEndpoint = body == null ? "" : body.trim();
+        if (plainEndpoint.isEmpty()) {
+            log.error("代理 API 返回空响应");
+            return null;
+        }
+        ExtractProxy plainProxy = parseEndpoint(plainEndpoint, Proxy.Type.SOCKS);
+        if (plainProxy != null) {
+            List<ExtractProxy> single = new ArrayList<>(1);
+            single.add(plainProxy);
+            return single;
+        }
+        if (!plainEndpoint.startsWith("{")) {
+            log.error("代理 API 返回的纯文本端点格式无效");
             return null;
         }
         try {
             JSONObject obj = JSONObject.parseObject(body);
             if (obj == null || obj.getInteger("code") == null || obj.getInteger("code") != 0) {
-                log.error("代理 API 返回异常: {}", body);
+                log.error("代理 API 返回异常 code={}", obj == null ? null : obj.getInteger("code"));
                 return null;
             }
             JSONArray data = obj.getJSONArray("data");
             if (data == null || data.isEmpty()) {
-                log.error("代理 API 无可用代理: {}", body);
+                log.error("代理 API 无可用代理");
                 return null;
             }
-            JSONObject first = data.getJSONObject(0);
-            String ip = first.getString("IP");
-            Integer port = first.getInteger("Port");
-            if (ip == null || port == null) {
-                return null;
+            List<ExtractProxy> list = new ArrayList<>();
+            for (int i = 0; i < data.size(); i++) {
+                JSONObject item = data.getJSONObject(i);
+                String ip = item.getString("IP");
+                Integer port = item.getInteger("Port");
+                if (ip == null || port == null) {
+                    continue;
+                }
+                ExtractProxy proxy = parseEndpoint(ip + ":" + port, Proxy.Type.HTTP);
+                if (proxy != null) {
+                    list.add(proxy);
+                }
             }
-            return new String[]{ip, String.valueOf(port)};
+            if (list.isEmpty()) {
+                log.error("代理 API 返回的 IP 或 Port 格式均无效");
+            }
+            return list;
         } catch (Exception e) {
-            log.error("代理 API 响应解析异常: {}", e.getMessage());
+            log.error("代理 API 响应解析异常: {}", e.getClass().getSimpleName());
             return null;
         }
+    }
+
+    private static ExtractProxy parseEndpoint(String value, Proxy.Type type) {
+        if (value == null || value.isEmpty() || value.indexOf(':') <= 0
+                || value.indexOf(':') != value.lastIndexOf(':')) {
+            return null;
+        }
+        int colon = value.indexOf(':');
+        String host = value.substring(0, colon).trim();
+        String portText = value.substring(colon + 1).trim();
+        if (!isIpv4(host) || portText.isEmpty()) {
+            return null;
+        }
+        try {
+            int port = Integer.parseInt(portText);
+            if (port < 1 || port > 65535) {
+                return null;
+            }
+            return new ExtractProxy(host, port, type);
+        } catch (NumberFormatException e) {
+            return null;
+        }
+    }
+
+    private static boolean isIpv4(String value) {
+        String[] parts = value.split("\\.", -1);
+        if (parts.length != 4) {
+            return false;
+        }
+        for (String part : parts) {
+            if (part.isEmpty() || part.length() > 3) {
+                return false;
+            }
+            for (int i = 0; i < part.length(); i++) {
+                if (!Character.isDigit(part.charAt(i))) {
+                    return false;
+                }
+            }
+            if (Integer.parseInt(part) > 255) {
+                return false;
+            }
+        }
+        return true;
     }
 
     private static String env(String key, String def) {
