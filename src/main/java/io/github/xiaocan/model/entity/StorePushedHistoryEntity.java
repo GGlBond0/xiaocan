@@ -27,6 +27,11 @@ public class StorePushedHistoryEntity {
     @TableId(type = IdType.AUTO)
     private Long id;
 
+    /**
+     * 批量插入时的批次ID（UUID去-）
+     */
+    private String batchId;
+
     private Integer userId;
 
     private Integer notifyConfigId;
