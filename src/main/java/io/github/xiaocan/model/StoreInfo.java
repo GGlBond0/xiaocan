@@ -1,5 +1,6 @@
 package io.github.xiaocan.model;
 
+import io.github.xiaocan.model.enums.StoreTypeEnum;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -114,5 +115,56 @@ public class StoreInfo {
      * 本字段不单独阻断抢单（有历史单的账号仍可能成功）。
      */
     private Boolean ifRepurchasePromotion;
+
+    // ====== 上游合并新增字段（L0 地基，仅加法，不动现有字段） ======
+
+    /**
+     * 门店唯一id（storeId 或 wm_poi_id）
+     */
+    private String uniqId;
+    /**
+     * 门店类型枚举（小蚕满减/美团赏金/歪卖满减/歪卖美团赏金）
+     */
+    private StoreTypeEnum storeTypeEnum;
+    /**
+     * 带单位距离，如 1.2km
+     */
+    private String distanceStr;
+    /**
+     * 返现百分比（美团赏金）
+     */
+    private BigDecimal rebateRatio;
+    /**
+     * 最高返现金额（美团赏金）
+     */
+    private BigDecimal rebateMax;
+    /**
+     * 返现条件（字符串）
+     */
+    private String rebateConditionStr;
+    /**
+     * 收藏id
+     */
+    private Long favoriteId;
+    /**
+     * 是否存在
+     */
+    private Boolean exists;
+
+    /**
+     * 带单位距离 setter，与数值 distance(米) 互转同步（与上游一致）。
+     * 解析 "500m"/"1.5km" 到 distance(米)。
+     */
+    public void setDistanceStr(String distanceStr) {
+        this.distanceStr = distanceStr;
+        if (distanceStr != null && this.distance == null) {
+            String lower = distanceStr.trim().toLowerCase();
+            if (lower.endsWith("km")) {
+                this.distance = (int) (Double.parseDouble(lower.replace("km", "")) * 1000);
+            } else if (lower.endsWith("m")) {
+                this.distance = (int) Double.parseDouble(lower.replace("m", ""));
+            }
+        }
+    }
 
 }

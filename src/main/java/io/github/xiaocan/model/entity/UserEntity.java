@@ -44,6 +44,10 @@ public class UserEntity {
      */
     private Integer notifyDedupMinutes = 60;
 
+    /**
+     * 歪麦token，映射列 waimai_token
+     */
+    private String waimaiToken;
 
 
 
