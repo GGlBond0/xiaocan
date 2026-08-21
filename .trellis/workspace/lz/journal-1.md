@@ -1117,3 +1117,36 @@ deploy-upstream-jar：本地 clean package 产出41MB JAR(含4新控制器+Proxy
 ### Next Steps
 
 - None - task complete
+
+
+## Session 33: 前端接入upstream五模块页面+导航(收藏/门店搜索/歪麦/库存历史)
+
+**Date**: 2026-08-21
+**Task**: 前端接入upstream五模块页面+导航(收藏/门店搜索/歪麦/库存历史)
+**Branch**: `feat/upstream-modules`
+
+### Summary
+
+frontend-upstream-pages：前端仓库 xiaocan-front-main 新增4页面(收藏FavoriteStoreView/门店搜索StoreSearchView/歪麦WmmtView/库存历史StoreInventoryHistoryView)+NavBar菜单+4路由+echarts；库存页移植上游xiaocan-front，其余按后端契约新设计(地址下拉取经纬度/cityCode/locationId)；npm run build(vue-tsc)通过；browser-relay+adaptive-vision-skill视觉验证4页渲染正常；前端commit 08cb260；本任务记录spec+归档。另：安装并配置 adaptive-vision-skill(VISION_BASE_URL=opencode.ai/zen/go/v1, model mimo-v2.5)解决了当前模型grok读图被拒问题。
+
+### Main Changes
+
+- Detailed change bullets were not supplied; see the summary above.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `8917ecb` | (see git log) |
+
+### Testing
+
+- Validation was not recorded for this session.
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

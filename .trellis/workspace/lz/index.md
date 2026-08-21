@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 32
+- **Total Sessions**: 33
 - **Last Active**: 2026-08-21
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~1119 | Active |
+| `journal-1.md` | ~1152 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 33 | 2026-08-21 | 前端接入upstream五模块页面+导航(收藏/门店搜索/歪麦/库存历史) | `8917ecb` | `feat/upstream-modules` |
 | 32 | 2026-08-21 | 部署upstream模块JAR到生产+接口回归+收尾归档 | `60ee391` | `feat/upstream-modules` |
 | 31 | 2026-08-21 | Task10 schema增量+全量编译+生产落库+收尾归档 | `f7fc561` | `feat/upstream-modules` |
 | 30 | 2026-08-21 | 白金隧道池接入生产代理 | `eb8014e` | `main` |
