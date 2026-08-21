@@ -1051,3 +1051,36 @@ B-4:XiaoChanServiceImpl distance null用nullsLast+name null防御(3处)。B-6:Pr
 ### Next Steps
 
 - None - task complete
+
+
+## Session 31: Task10 schema增量+全量编译+生产落库+收尾归档
+
+**Date**: 2026-08-21
+**Task**: Task10 schema增量+全量编译+生产落库+收尾归档
+**Branch**: `feat/upstream-modules`
+
+### Summary
+
+upstream-modules-schema：ddl.sql 末尾追加 favorite_store/store_inventory_history/message_batch_record 三表 + user.waimai_token + store_pushed_history.batch_id(可空)+idx_batch_id；StorePushedHistoryEntity VO 四字段标 @TableField(exist=false)；本地 clean 全量 compile/test-compile 通过；生产 121.91.175.192 执行增量 SQL 并探活验证三表两列一索引进库；更新 upstream-modules-merge spec；gitignore 忽略 mitm_mcp_traffic.db；commit f7fc561(不push不部署JAR)。
+
+### Main Changes
+
+- Detailed change bullets were not supplied; see the summary above.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `f7fc561` | (see git log) |
+
+### Testing
+
+- Validation was not recorded for this session.
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
