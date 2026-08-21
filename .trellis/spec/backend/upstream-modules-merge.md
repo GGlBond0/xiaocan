@@ -85,5 +85,6 @@
 - ✅ 强耦合网 L0→L4 五模块已全量合入并逐层编译通过（2026-08-21，本地 clean compile + test-compile 全绿）。
 - ✅ `TransactionTemplate`、`SystemConfig`、`MessageBatchRecordService` 三个缺失 bean 已确认存在（Spring Boot 默认 + 新增 bean），编译自动装配通过。
 - ✅ 生产 Schema 增量（三表 + `user.waimai_token` + `store_pushed_history.batch_id` + `idx_batch_id`）已落地并验证。
-- ⏳ **待部署**：本任务只迁 schema、不部署 JAR。旧 JAR 忽略新表/新列仍可运行；需后续单独部署新 JAR 才能让新增 Controller / iframe 有数据（`BaseTask` 写 batchId 亦未做，属主权区延期项）。
-- ⚠️ 歪麦 `WmmtHttp` 抓取走直连（上游如此），未走本地代理——需提示用户（上游歪麦接口可能也在被监控/代理范围）。
+- ✅ **已部署**（2026-08-21）：新 JAR 本地 package → 分片 scp（禁 scp 整包，见 [[scp-large-jar-hangs-server]]）→ 生产替换 + 重启 → Tomcat 10234 + HikariPool 启动正常。接口回归：favorite save/stores、store-inventory-history、store/search 均 200 正常；`wmmt/shopList` 接口可达但**歪麦上游 SocketTimeout**（外部受限，非应用 bug，见下）。
+- ⏳ **BaseTask 写 batchId** 未做（主权区延期项）；iframe / 消息批量需其写入才有完整数据。
+- ⚠️ 歪麦 `WmmtHttp` 抓取走直连（上游如此）：生产实测 `/api/wmmt/shopList` 报"拉取密钥异常: SocketTimeoutException: Read timed out"，歪麦上游服务器不稳定/慢，非应用缺陷。
