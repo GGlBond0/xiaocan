@@ -1084,3 +1084,36 @@ upstream-modules-schema：ddl.sql 末尾追加 favorite_store/store_inventory_hi
 ### Next Steps
 
 - None - task complete
+
+
+## Session 32: 部署upstream模块JAR到生产+接口回归+收尾归档
+
+**Date**: 2026-08-21
+**Task**: 部署upstream模块JAR到生产+接口回归+收尾归档
+**Branch**: `feat/upstream-modules`
+
+### Summary
+
+deploy-upstream-jar：本地 clean package 产出41MB JAR(含4新控制器+ProxyHolder)；分片scp(6MB×7+cat+md5校验)替代整包scp避免小机卡死；生产备份旧JAR→替换→重启 xiaocan；Tomcat 10234+HikariPool 启动正常无启动错误；接口回归：favorite save/stores 落库查询正常、store-inventory-history 200、store/search 200，wmmt/shopList 可达但歪麦上游 SocketTimeout(外部受限非应用bug)；smoke数据清理；更新spec标记已部署+部署记忆；commit 60ee391(不push)。
+
+### Main Changes
+
+- Detailed change bullets were not supplied; see the summary above.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `60ee391` | (see git log) |
+
+### Testing
+
+- Validation was not recorded for this session.
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
