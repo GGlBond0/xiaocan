@@ -1150,3 +1150,37 @@ frontend-upstream-pages：前端仓库 xiaocan-front-main 新增4页面(收藏Fa
 ### Next Steps
 
 - None - task complete
+
+
+## Session 34: 前端部署上线到生产+生产验证新菜单
+
+**Date**: 2026-08-21
+**Task**: 前端部署上线到生产+生产验证新菜单
+**Branch**: `feat/upstream-modules`
+
+### Summary
+
+将新前端dist部署到生产121.91.175.192:/var/www/xiaocan/dist：绝对路径打包30个JS/CSS(避踩dist坑)→scp上传→生产备份旧dist(dist.bak.20260821-103905)→解压chown→JS数12→28；browser-relay+VLM视觉验证生产导航含收藏/门店搜索/歪麦新菜单，收藏页调后端正常。前端commit 08cb260(前端仓库)，后端spec记录8917ecb。至此upstream五模块全链路(后端schema→部署JAR→前端页面→上线生产)完成。
+
+### Main Changes
+
+- Detailed change bullets were not supplied; see the summary above.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `08cb260` | (see git log) |
+| `8917ecb` | (see git log) |
+
+### Testing
+
+- Validation was not recorded for this session.
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
