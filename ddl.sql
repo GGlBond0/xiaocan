@@ -397,3 +397,60 @@ ALTER TABLE `grab_config`
 ALTER TABLE `grab_config`
   ADD COLUMN `combo_snapshot` TEXT NULL COMMENT '同门店所有组合快照JSON,供到点/降级重建组合';
 
+-- ============================
+-- 2026-08-21 上游强耦合网：收藏 / 库存历史 / 消息批次 + waimai_token + batch_id
+-- 生产只执行本段。禁止整文件导入本 ddl.sql（前半含 DROP TABLE IF EXISTS）。
+-- MySQL 8 不支持 ADD COLUMN IF NOT EXISTS：加列前先查 information_schema。
+-- ============================
+
+CREATE TABLE IF NOT EXISTS `favorite_store` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `user_id` int NOT NULL,
+  `location_id` bigint NOT NULL,
+  `uniq_id` varchar(100) NOT NULL COMMENT '门店唯一标识',
+  `store_type` varchar(50) NOT NULL COMMENT '门店类型: XC_MANJIAN/XC_MTSJ/WM_MANJIAN/WM_MTSJ',
+  `icon` varchar(500) DEFAULT NULL,
+  `name` varchar(255) NOT NULL,
+  `type` int DEFAULT NULL,
+  `distance` varchar(32) DEFAULT NULL,
+  `create_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `deleted` tinyint(1) NOT NULL DEFAULT '0',
+  PRIMARY KEY (`id`),
+  KEY `idx_user_location_store` (`user_id`,`location_id`,`store_type`),
+  KEY `idx_uniq_id` (`uniq_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='收藏门店';
+
+CREATE TABLE IF NOT EXISTS `store_inventory_history` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `name` varchar(255) NOT NULL,
+  `unique_id` varchar(100) NOT NULL,
+  `inventory` int NOT NULL,
+  `store_type` varchar(255) DEFAULT NULL,
+  `create_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `sku_id` varchar(50) NOT NULL DEFAULT '',
+  `sku_name` varchar(100) NOT NULL DEFAULT '',
+  PRIMARY KEY (`id`),
+  KEY `idx_sku_id` (`sku_id`),
+  KEY `idx_unique_time` (`unique_id`,`create_time`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='门店库存历史';
+
+CREATE TABLE IF NOT EXISTS `message_batch_record` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `user_id` int NOT NULL,
+  `batch_ids` text,
+  `create_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='消息批次记录';
+
+-- 生产执行前：SELECT COLUMN_NAME FROM information_schema.columns
+--   WHERE TABLE_SCHEMA='xiaocan' AND TABLE_NAME='user' AND COLUMN_NAME='waimai_token';
+-- 已存在则跳过本 ALTER。不要 AFTER spt（生产 spt 后已有 xc_* 列）。
+ALTER TABLE `user`
+  ADD COLUMN `waimai_token` varchar(255) DEFAULT NULL COMMENT '歪麦token';
+
+-- 生产执行前同样先查 batch_id。本列可空；监控落库暂不写，仅避免按 batchId 查询炸列。
+-- 禁止对本表做上游破坏性重构（store_id→uniq_id、DROP distance/if_new/open_hours）。
+ALTER TABLE `store_pushed_history`
+  ADD COLUMN `batch_id` varchar(64) DEFAULT NULL COMMENT '消息批次ID(UUID去-)',
+  ADD KEY `idx_batch_id` (`batch_id`);
+

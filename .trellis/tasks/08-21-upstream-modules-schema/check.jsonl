@@ -1,0 +1,5 @@
+{"path":"ddl.sql","reason":"must not DROP existing tables in the new section"}
+{"path":"src/main/java/io/github/xiaocan/model/entity/StorePushedHistoryEntity.java","reason":"mapping must not SELECT missing columns"}
+{"path":"src/main/java/io/github/xiaocan/service/impl/MessageBatchRecordServiceImpl.java","reason":"queries batchId; column must exist"}
+{"path":"src/main/java/io/github/xiaocan/tasks/BaseTask.java","reason":"sovereignty; this task must not edit it"}
+{"path":".trellis/spec/backend/upstream-modules-merge.md","reason":"spec wrap-up"}

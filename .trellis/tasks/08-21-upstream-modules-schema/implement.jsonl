@@ -1,0 +1,5 @@
+{"path":"ddl.sql","reason":"append-only schema for favorite/inventory/message + waimai_token + batch_id"}
+{"path":"src/main/java/io/github/xiaocan/model/entity/StorePushedHistoryEntity.java","reason":"exist=false on VO fields; batchId maps to real column"}
+{"path":".trellis/spec/backend/upstream-modules-merge.md","reason":"record L0-L4 done and schema status"}
+{"path":"docs/superpowers/plans/2026-08-21-upstream-modules-merge.md","reason":"Task10 source card"}
+{"path":".trellis/spec/backend/database-guidelines.md","reason":"no Flyway; ddl.sql + manual prod ALTER"}

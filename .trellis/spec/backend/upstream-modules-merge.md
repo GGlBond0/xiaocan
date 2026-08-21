@@ -1,7 +1,7 @@
 # Upstream Modules Merge（强耦合网合入专项设计）
 
 > 把上游 lyrric/xiaochan 的强耦合功能网（歪麦/收藏/库存历史/门店搜索/消息批量）在**本地二开底座上**以最小侵入方式移植合入。
-> 关联记忆：`upstream-fork-merge-analysis`。第一批低风险增量已完成（2026-08-21，commit ef4bafb）。
+> 关联记忆：`upstream-fork-merge-analysis`。第一批低风险增量已完成（commit ef4bafb）；本专项五模块 L0→L4 全量合入 + 生产 Schema 增量已落地（2026-08-21）。
 
 ---
 
@@ -63,10 +63,12 @@
 
 ## Schema 增量（只加新表/新列，不动本地表）
 - 新表：`favorite_store`、`store_inventory_history`(+`sku_id`/`sku_name` 列)、`message_batch_record`
-- 新列：`user.waimai_token`（VARCHAR(255)）
-- **不执行**上游对 `store_pushed_history` 的破坏性重构（store_id→uniq_id、DROP distance/if_new/open_hours）。
+- 新列：`user.waimai_token`（VARCHAR(255)）、`store_pushed_history.batch_id`（VARCHAR(64) NULL + `KEY idx_batch_id`）
+- **不执行**上游对 `store_pushed_history` 的破坏性重构（store_id→uniq_id、DROP distance/if_new/open_hours）。本任务仅加**可空** `batch_id` 列，避免 `getPushedHistoryByRecordId` 按 batchId 查询炸列；监控落库暂不写该列。
 - `monitor_config.store_type`：**本专项不强制加**（歪麦分流需它时再补，当前独立能力叠加用不到）。
 - `user` 删 xc* 字段：一律不做（本地保留，上文已证为死字段，留着无害）。
+
+> 生产执行（2026-08-21 已落地 / 121.91.175.192）：只跑 `ddl.sql` 末尾增量段（三表 + 两列 + `idx_batch_id` 索引），已探活验证三表两列一索引进 information_schema 均存在。**禁止整文件导入 ddl.sql**（前半含 DROP TABLE IF EXISTS 会毁库）。`StorePushedHistoryEntity` VO 四字段（locationId/uniqId/storeTypeEnum/favoriteId）均标 `@TableField(exist = false)`，纯展示不写库。
 
 ## 移植适配规则
 - 新增文件原样带 `upstream/main`，但**编译适配**：`XiaochanHttp.xxx` 静态调用 → 实例调用；`StoreInfo` 因保留 Integer promotionId 导致的 String 赋值冲突 → 按本地口径改。
@@ -80,6 +82,8 @@
 4. 新增能力接口冒烟（可选，起服务测）。
 
 ## 待办 / 风险
-- 强耦合网内部依赖链长，按 L0→L4 顺序逐步编译推进，每层编译验证再进下一层。
-- `TransactionTemplate`、`SystemConfig`、`MessageBatchRecordService` 三个缺失 bean 需确认 Spring Boot 默认是否满足，否则显式补。
-- 歪麦 `WmmtHttp` 抓取走直连（上游如此），未走本地代理——需提示用户（上游歪麦接口可能也在被监控/代理范围）。
+- ✅ 强耦合网 L0→L4 五模块已全量合入并逐层编译通过（2026-08-21，本地 clean compile + test-compile 全绿）。
+- ✅ `TransactionTemplate`、`SystemConfig`、`MessageBatchRecordService` 三个缺失 bean 已确认存在（Spring Boot 默认 + 新增 bean），编译自动装配通过。
+- ✅ 生产 Schema 增量（三表 + `user.waimai_token` + `store_pushed_history.batch_id` + `idx_batch_id`）已落地并验证。
+- ⏳ **待部署**：本任务只迁 schema、不部署 JAR。旧 JAR 忽略新表/新列仍可运行；需后续单独部署新 JAR 才能让新增 Controller / iframe 有数据（`BaseTask` 写 batchId 亦未做，属主权区延期项）。
+- ⚠️ 歪麦 `WmmtHttp` 抓取走直连（上游如此），未走本地代理——需提示用户（上游歪麦接口可能也在被监控/代理范围）。
