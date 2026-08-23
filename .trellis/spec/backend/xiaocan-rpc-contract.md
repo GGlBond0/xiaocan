@@ -115,6 +115,26 @@ App 版 `LotteryInfo` 额外返回 `lottery_times` 对象（各任务加几次�
 | 代理未启用 | - | 直连 |
 | **JWT 过期**（`X-Sivir` 失效） | 401 | 同 401 路径，提示用户重新录入 App 登录态 |
 
+### 多池轮换（`pool_list` 契约，2026-08-24 新增）
+
+应对携趣共享代理池**高峰段（14-20 点）IP 大面积不可用**：不是接口限流，是高峰期池被全网抢空、分配该 uid 的 IP 全是坏尾单（日志特征：高峰段大量 `Unable to tunnel through proxy...503`，提取 API 本身 `code:0`）。
+
+**契约**：
+- `proxy_config.pool_list`（DB 新增列，VARCHAR）承载多隧道池组号，逗号分隔如 `51,82,57,61,62,76`；**null/空 = 单池不轮换（零回归）**。
+- 携趣隧道池切换：**只改 `act=getturn{N}` 组号，`group=51` 固定不变**（搭 `group` 一起换会返回 `ErrKey1`）。⚠ 反模式见下。
+- `ProxyHolder`：`parsePools` 解析过滤（非法组号 1-999 外告警忽略）→ `nextPoolIndex`（`POOL_ROUND_ROBIN` 游标 `floorMod`）→ `resolveActUrl` 把 `act=getturn\d+` 替换为目标池（模板无 `act=getturn` 则原样兜底）。
+- **轮换时机 = 仅缓存未命中/ttl 过期/force 时**（即每 ttl=28s 周期换一次池），同 key 在 ttl 内仍复用同一 IP（缓存语义不变）；不每请求换池（避免放大提取频率反触限流）。
+- 接口 `GET/PUT /api/proxy/config` 暴露 `poolList`；前端设置页独立"隧道池列表"输入（留空=单池）。
+- **回滚** = 把 `pool_list` 置空（PUT），即回单池；无需重启（`ProxyHolder.invalidate()` 即时清配置快照）。
+
+**Validation / Error Matrix**：
+- `pool_list` 空 / null / 全非法 → 不轮换，行为等同改造前单池。
+- 含非法项 → 合法项保留，非法项告警忽略。
+- `api_url` 模板不含 `act=getturn` → `resolveActUrl` 原样返回，不替换、不崩溃。
+- `POOL_ROUND_ROBIN` 与端点槽位 `ROUND_ROBIN` 游标**语义独立**，并发 `getAndIncrement` 原子。
+
+> **反模式**：把 `group` 参数也一起换到目标池（如 `group=82`）——携趣对未开通组返回 `ErrKey1`。正确写法是 `act=getturn82&...&group=51`（group 固定）。
+
 > App 版 `AddLotteryTimes` 对**已做过的任务**实测返回 **HTTP 200 + `code:40040`**（业务码，非 HTTP 401）。`is_add_times=false`（当日加机会次数已满）才走 HTTP 401。两者均"不重试、不中断"。
 
 ### Gotcha: 401 ≠ 代理问题，别换代理重试
