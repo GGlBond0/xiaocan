@@ -1185,47 +1185,6 @@ frontend-upstream-pages：前端仓库 xiaocan-front-main 新增4页面(收藏Fa
 
 - None - task complete
 
-## Session 35: 携趣代理高峰段IP劣化根因锁定+多池轮换实现部署
-
-**Date**: 2026-08-24
-**Task**: 携趣代理高峰段IP劣化根因锁定+多池轮换实现部署
-**Branch**: `feat/upstream-modules`
-
-### Summary
-
-诊断并解决线上 8-20 起 `状态码错误:-1`(代理503)。根因=携趣共享代理池高峰段(14-20点)IP被抢空,分配该uid的IP大面积不可用(8-23高峰段191提取94%换代理,统一 Unable to tunnel 503),非接口限流。用户纠正关键认知:多隧道池只改 act=getturn{N},group固定=51。方案:proxy_config 新增 pool_list 字段(逗号分隔池组号),ProxyHolder 按池 Round-Robin 轮换提取(每ttl周期换池,缓存语义不变,空列表=单池零回归)。后端6文件+单测+前端设置页加"隧道池列表"输入,全部实现。部署:后端jar分7片(6MB)上传合并md5一致,ALTER加列,restart;前端dist tar部署;生产验证6池跨池轮换(act=getturn62/76/82/57/61),请求200。trellis-check修复再提交。高峰段验证定时14:20对比8-23。
-
-### Main Changes
-
-- Detailed change bullets were not supplied; see the summary above.
-
-### Git Commits
-
-| Hash | Message |
-|------|---------|
-| `ee816f7` | feat(proxy): ProxyHolder 多池轮换规避携趣高峰段 IP 劣化 |
-| `cf07642` | refactor(proxy): 提取 nextPoolIndex 方法 + 补边界单测 + 修正 DDL 幂等注释 |
-| `40b31df` | feat(settings): 代理设置页新增隧道池列表(poolList)输入 (前端仓库) |
-| `4af6c30` | chore(task): 归档 08-24-proxy-multi-pool-round-robin 规划产物 |
-| `2b85145` | chore(task): implement 补充高峰段验证手动方法 |
-
-### Testing
-
-- ProxyHolderRoundRobinTest 8/8 通过(parsePools/resolveActUrl/nextPoolIndex RR分布)
-- 单测 8/8, Failures 0, Errors 0 (careful check by trellis-check sub-agent)
-- 生产验证: searchAddress 触发跨池轮换 + 全部200; 凌晨6池可用率全绿(baidu 200,间隔2s控制)
-
-### Status
-
-[OK] **Completed** (AC6 高峰段14-20对比验证待定,实施会话已设14:20定时检查,会话关闭需手动)
-
-### Next Steps
-
-- 等待 14-20 点高峰段: 对比 error.log `状态码错误:-1` 今日 vs 8-23,确认多池轮换生效
-- 若改善明显 → /trellis:finish-work 收尾; 若仍高 → 评估降频/换源
-- 遗留: 库存历史表 unique_id 空值 bug(上游 uniqId 为 null 整批插入失败)未修,建议后续独立任务处理
-
-
 ## Session 35: 携趣代理多池轮换实现部署+提前实测收尾
 
 **Date**: 2026-08-24
