@@ -1224,3 +1224,38 @@ frontend-upstream-pages：前端仓库 xiaocan-front-main 新增4页面(收藏Fa
 - 等待 14-20 点高峰段: 对比 error.log `状态码错误:-1` 今日 vs 8-23,确认多池轮换生效
 - 若改善明显 → /trellis:finish-work 收尾; 若仍高 → 评估降频/换源
 - 遗留: 库存历史表 unique_id 空值 bug(上游 uniqId 为 null 整批插入失败)未修,建议后续独立任务处理
+
+
+## Session 35: 携趣代理多池轮换实现部署+提前实测收尾
+
+**Date**: 2026-08-24
+**Task**: 携趣代理多池轮换实现部署+提前实测收尾
+**Branch**: `feat/upstream-modules`
+
+### Summary
+
+诊断线上8-20起状态码-1(代理503):根因=携趣共享池高峰段IP被抢空(非限流,用户纠正关键认知:隧道池只改act=getturn{N}不换group)。实现ProxyHolder多池轮换:proxy_config新增pool_list字段,Round-Robin换池(每ttl周期,缓存语义不变,空列表单池零回归);后端6文件+单测8/8+前端设置页poolList输入,全部部署。用户改cron全天每10分钟提前实测:07:20-07:40三窗口发现多池轮换对部分池坏有效(07:30有成功)、对全池瞬坏(07:40六池全503)无效。AC6高峰段验证仍pending(保留14-20手动验证方法)。trellis-check+update-spec+journal已完成。遗留:库存历史unique_id空值bug未修。
+
+### Main Changes
+
+- Detailed change bullets were not supplied; see the summary above.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `ee816f7` | (see git log) |
+| `cf07642` | (see git log) |
+| `d85d8e8` | (see git log) |
+
+### Testing
+
+- Validation was not recorded for this session.
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

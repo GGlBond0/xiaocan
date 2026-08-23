@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 34
-- **Last Active**: 2026-08-21
+- **Total Sessions**: 35
+- **Last Active**: 2026-08-24
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~1186 | Active |
+| `journal-1.md` | ~1261 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 35 | 2026-08-24 | 携趣代理多池轮换实现部署+提前实测收尾 | `ee816f7`, `cf07642`, `d85d8e8` | `feat/upstream-modules` |
 | 34 | 2026-08-21 | 前端部署上线到生产+生产验证新菜单 | `08cb260`, `8917ecb` | `feat/upstream-modules` |
 | 33 | 2026-08-21 | 前端接入upstream五模块页面+导航(收藏/门店搜索/歪麦/库存历史) | `8917ecb` | `feat/upstream-modules` |
 | 32 | 2026-08-21 | 部署upstream模块JAR到生产+接口回归+收尾归档 | `60ee391` | `feat/upstream-modules` |
