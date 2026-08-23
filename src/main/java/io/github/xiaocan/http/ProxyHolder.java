@@ -201,7 +201,7 @@ public class ProxyHolder {
         List<Integer> pools = parsePools(c);
         String fetchUrl = apiUrl;
         if (!pools.isEmpty()) {
-            int idx = Math.floorMod(POOL_ROUND_ROBIN.getAndIncrement(), pools.size());
+            int idx = nextPoolIndex(pools);
             int poolN = pools.get(idx);
             fetchUrl = resolveActUrl(apiUrl, poolN);
             if (!fetchUrl.equals(apiUrl)) {
@@ -225,6 +225,14 @@ public class ProxyHolder {
     }
 
     // ---------- 多池轮换辅助 ----------
+
+    /**
+     * Round-Robin 取下一池索引：poolList 非空时，每 ttl 周期 fetch 才调用一次，
+     * 与端点槽位游标 ROUND_ROBIN 语义独立。取模使用 floorMod 保证并发递增后仍非负。
+     */
+    private static int nextPoolIndex(List<Integer> pools) {
+        return Math.floorMod(POOL_ROUND_ROBIN.getAndIncrement(), pools.size());
+    }
 
     /**
      * 解析多隧道池组号列表（来自 cfg.poolList，逗号分隔）。

@@ -267,7 +267,11 @@ CREATE TABLE `proxy_config`  (
   PRIMARY KEY (`id`) USING BTREE
 ) ENGINE = InnoDB CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci COMMENT = '代理IP池全局配置表' ROW_FORMAT = Dynamic;
 
--- 生产已存在 proxy_config 表的补列语句(幂等:列已存在则跳过)
+-- 生产已存在 proxy_config 表的补列语句。
+-- 注意: MySQL 8 不支持 ADD COLUMN IF NOT EXISTS; 执行前先查 information_schema 确认列不存在:
+--   SELECT COLUMN_NAME FROM information_schema.columns
+--   WHERE TABLE_SCHEMA='xiaocan' AND TABLE_NAME='proxy_config' AND COLUMN_NAME='pool_list';
+-- 已存在则跳过本 ALTER。
 -- ALTER TABLE `proxy_config` ADD COLUMN `pool_list` VARCHAR(200) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL DEFAULT NULL COMMENT '多隧道池组号列表,逗号分隔,如 51,82,57,61,62,76;为空=单池不轮换' AFTER `request_timeout`;
 
 -- ----------------------------
