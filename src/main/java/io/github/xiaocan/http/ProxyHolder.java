@@ -67,6 +67,12 @@ public class ProxyHolder {
     /** 提取到的端点列表槽位游标：按账号 key 轮流分配不同隧道端口（实现每账号独立出口） */
     private static final AtomicInteger ROUND_ROBIN = new AtomicInteger(0);
 
+    /**
+     * 多隧道池轮换游标：poolList 非空时，每 ttl 周期换一个池(act=getturn{N})，
+     * 摊薄高峰段单池 IP 劣化影响。与端点槽位游标 ROUND_ROBIN 语义独立。
+     */
+    private static final AtomicInteger POOL_ROUND_ROBIN = new AtomicInteger(0);
+
     private static final class ExtractProxy {
         final String host;
         final int port;
@@ -191,7 +197,18 @@ public class ProxyHolder {
                 return new ProxySpec(cached.proxy[0], Integer.parseInt(cached.proxy[1]), type);
             }
         }
-        List<ExtractProxy> list = fetchProxyList(apiUrl);
+        // 多池轮换：poolList 非空时，按池游标选一个池，把 url 的 act=getturn{N} 替换到该池
+        List<Integer> pools = parsePools(c);
+        String fetchUrl = apiUrl;
+        if (!pools.isEmpty()) {
+            int idx = Math.floorMod(POOL_ROUND_ROBIN.getAndIncrement(), pools.size());
+            int poolN = pools.get(idx);
+            fetchUrl = resolveActUrl(apiUrl, poolN);
+            if (!fetchUrl.equals(apiUrl)) {
+                log.info("多池轮换: 切换到隧道池 act=getturn{} ({}/{})", poolN, idx + 1, pools.size());
+            }
+        }
+        List<ExtractProxy> list = fetchProxyList(fetchUrl);
         if (list == null || list.isEmpty()) {
             return null;
         }
@@ -205,6 +222,49 @@ public class ProxyHolder {
             pruneExpired(ttl);
         }
         return new ProxySpec(p.host, p.port, p.type);
+    }
+
+    // ---------- 多池轮换辅助 ----------
+
+    /**
+     * 解析多隧道池组号列表（来自 cfg.poolList，逗号分隔）。
+     * 过滤空项与非法组号(1-999)；空/非法输入返回空列表 = 不轮换（单池兼容）。
+     */
+    private static List<Integer> parsePools(ProxyConfigEntity c) {
+        List<Integer> pools = new ArrayList<>();
+        String raw = c == null ? null : c.getPoolList();
+        if (raw == null || raw.trim().isEmpty()) {
+            return pools;
+        }
+        for (String part : raw.split(",")) {
+            String t = part.trim();
+            if (t.isEmpty()) {
+                continue;
+            }
+            try {
+                int id = Integer.parseInt(t);
+                if (id >= 1 && id <= 999) {
+                    pools.add(id);
+                } else {
+                    log.warn("忽略非法隧道池组号: {}", t);
+                }
+            } catch (NumberFormatException e) {
+                log.warn("忽略非法隧道池组号: {}", t);
+            }
+        }
+        return pools;
+    }
+
+    /**
+     * 把 api_url 中的池组号替换为指定池：`act=getturn{N}` → `act=getturn{poolId}`。
+     * 携趣模板其它参数(uid/vkey/group/time...)保持不变。
+     * 模板不含 `act=getturn` 时返回原 url（不替换，兜底不崩）。
+     */
+    private static String resolveActUrl(String apiUrl, int poolId) {
+        if (apiUrl == null || !apiUrl.contains("act=getturn")) {
+            return apiUrl;
+        }
+        return apiUrl.replaceAll("act=getturn\\d+", "act=getturn" + poolId);
     }
 
     // ---------- 配置读取（entity + Environment 兜底） ----------

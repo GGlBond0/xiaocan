@@ -46,6 +46,11 @@ public class ProxyConfigEntity {
      */
     private Integer requestTimeout;
 
+    /**
+     * 多隧道池组号列表(逗号分隔,如 "51,82,57,61,62,76");为空=单池不轮换
+     */
+    private String poolList;
+
     private LocalDateTime createTime;
 
     private LocalDateTime updateTime;

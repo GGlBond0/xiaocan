@@ -32,4 +32,9 @@ public class ProxyConfigVO {
      * 上游请求超时(毫秒)
      */
     private Integer requestTimeout;
+
+    /**
+     * 多隧道池组号列表(逗号分隔);为空=单池不轮换
+     */
+    private String poolList;
 }

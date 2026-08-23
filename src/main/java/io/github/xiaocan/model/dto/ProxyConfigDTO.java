@@ -36,4 +36,9 @@ public class ProxyConfigDTO {
      */
     @Min(1000)
     private Integer requestTimeout;
+
+    /**
+     * 多隧道池组号列表(逗号分隔,如 "51,82,57,61,62,76");可空=单池不轮换
+     */
+    private String poolList;
 }

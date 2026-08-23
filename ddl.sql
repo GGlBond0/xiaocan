@@ -260,11 +260,15 @@ CREATE TABLE `proxy_config`  (
   `ttl`             INT NOT NULL DEFAULT 28 COMMENT '代理缓存有效期(秒)',
   `retry`           INT NOT NULL DEFAULT 3 COMMENT '失败换代理重试次数',
   `request_timeout` INT NOT NULL DEFAULT 5000 COMMENT '上游请求超时(毫秒)',
+  `pool_list`       VARCHAR(200) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL DEFAULT NULL COMMENT '多隧道池组号列表,逗号分隔,如 51,82,57,61,62,76;为空=单池不轮换',
   `create_time`     DATETIME NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   `update_time`     DATETIME NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   `deleted`         TINYINT(1) NULL DEFAULT 0 COMMENT '逻辑删除标志',
   PRIMARY KEY (`id`) USING BTREE
 ) ENGINE = InnoDB CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci COMMENT = '代理IP池全局配置表' ROW_FORMAT = Dynamic;
+
+-- 生产已存在 proxy_config 表的补列语句(幂等:列已存在则跳过)
+-- ALTER TABLE `proxy_config` ADD COLUMN `pool_list` VARCHAR(200) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL DEFAULT NULL COMMENT '多隧道池组号列表,逗号分隔,如 51,82,57,61,62,76;为空=单池不轮换' AFTER `request_timeout`;
 
 -- ----------------------------
 -- Table structure for merchant_blacklist_config

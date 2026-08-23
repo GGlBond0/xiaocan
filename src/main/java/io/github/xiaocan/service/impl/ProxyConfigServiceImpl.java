@@ -42,6 +42,11 @@ public class ProxyConfigServiceImpl extends ServiceImpl<ProxyConfigMapper, Proxy
         ProxyConfigEntity entity = ensureRow();
         entity.setEnabled(dto.getEnabled());
         entity.setApiUrl(dto.getApiUrl());
+        // 多池列表可空：null/空 = 单池不轮换；显式传值（含空串清空）才覆盖，避免前端漏传误清。
+        // 注：MyBatis-Plus updateById 忽略 null，故仅非 null 时 set，空串可显式清空。
+        if (dto.getPoolList() != null) {
+            entity.setPoolList(dto.getPoolList());
+        }
         if (dto.getTtl() != null) {
             entity.setTtl(dto.getTtl());
         }
