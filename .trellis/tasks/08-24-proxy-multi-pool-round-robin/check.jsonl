@@ -1,0 +1,2 @@
+{"file": ".trellis/tasks/08-24-proxy-multi-pool-round-robin/prd.md", "reason": "验收AC3轮换生效/AC4空池兼容/AC6高峰段-1频率下降的判定标准"}
+{"file": ".trellis/tasks/08-24-proxy-multi-pool-round-robin/design.md", "reason": "验证策略:resolveActUrl单测、parsePools边界、生产高峰段对比8-23"}

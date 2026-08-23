@@ -1,0 +1,2 @@
+{"file": ".trellis/tasks/08-24-proxy-multi-pool-round-robin/design.md", "reason": "多池轮换技术设计:poolList承载、ProxyHolder轮换逻辑、resolveActUrl替换、缓存语义"}
+{"file": ".trellis/tasks/08-24-proxy-multi-pool-round-robin/prd.md", "reason": "需求与验收(AC1-AC7)、根因铁证(高峰段IP劣化非限流)、边界与回滚"}
