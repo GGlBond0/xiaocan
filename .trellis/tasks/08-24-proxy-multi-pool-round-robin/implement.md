@@ -36,6 +36,10 @@ grep '状态码错误: -1' /opt/xiaocan/logs/error.log | wc -l   # 与 8-23 同�
 grep '切换隧道池' /opt/xiaocan/logs/info.log | tail -20     # 确认轮换发生
 ```
 
+> 注意：实施会话已设 14:20 一次性 CronCreate 检查高峰段（session-only，会话关闭即失效）。
+> 若失效，请在 14-20 点任意时刻手动执行上面两行对比，或在 8-24 下午用
+> `grep -c '状态码错误: -1' /opt/xiaocan/logs/error.log` 与 8-23 作对比。
+
 ## 风险/回滚点
 
 - 改动集中 ProxyHolder + 配置承载；**回滚 = 把 poolList 置空**（PUT）即回单池；或回退 jar。
