@@ -21,6 +21,7 @@ This directory contains guidelines for backend development. Fill in each file wi
 | [Logging Guidelines](./logging-guidelines.md) | Structured logging, log levels | Filled |
 | [Push Routing](./push-routing.md) | 推送按地址路由多spt，user.spt兜底，PushService收口 | Filled |
 | [Xiaocan RPC Contract](./xiaocan-rpc-contract.md) | 小蚕RPC网关契约：单一端点+header路由+X-Ashe签名+明文JSON+401/403区分+mini/Android登录态 | Filled |
+| [Wmmt Contract](./wmmt-contract.md) | 歪麦数据源契约：RSA+AES/LEGACY_AES加解密、monitor_config source路由、uniq_id门店键 | Filled |
 
 ---
 
