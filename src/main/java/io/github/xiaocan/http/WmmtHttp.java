@@ -411,7 +411,9 @@ public class WmmtHttp {
                     if (meituanRatio != null) {
                         skuStoreinfo.setRebateRatio(meituanRatio.divide(new BigDecimal(100), 2, RoundingMode.HALF_DOWN));
                     }else{
-                        log.error("数据异常: {}", item.toJSONString());
+                        // 上游部分门店(shopPlatformType=3)缺 meituanRatio 字段 → 降级 WARN 避免 ERROR 刷屏（2026-08-25）
+                        log.warn("WmmtHttp 美团赏金 sku 缺 meituanRatio，置 rebateRatio=0: shop={}, sku={}",
+                                item.getString("shopName"), sku.getString("id"));
                         skuStoreinfo.setRebateRatio(BigDecimal.ZERO);
                     }
                     //meituanVipRatio：会员返现比例
