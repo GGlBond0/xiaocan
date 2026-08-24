@@ -1218,3 +1218,36 @@ frontend-upstream-pages：前端仓库 xiaocan-front-main 新增4页面(收藏Fa
 ### Next Steps
 
 - None - task complete
+
+
+## Session 36: 精简上游模块: 删除收藏/库存/消息/美团赏金/聚合搜索, 保留歪麦数据层
+
+**Date**: 2026-08-24
+**Task**: 精简上游模块: 删除收藏/库存/消息/美团赏金/聚合搜索, 保留歪麦数据层
+**Branch**: `feat/upstream-modules`
+
+### Summary
+
+Trellis任务08-24-trim-upstream-modules: 从分支feat/upstream-modules移除favorite_store/store_inventory_history/message_batch_record/message_service/message_batch_record/store_search/xc_meituanshangjin及孤立VO共28文件, 精简StoreInfo/StorePushedHistory字段与ddl.sql三表, 拆XiaoChan/WmmtService残留依赖, 保留WmmtHttp/WmmtService/UserEntity.waimaiToken歪麦地基. 本地mvn package+test-compile通过, 3提交+归档完成.
+
+### Main Changes
+
+- Detailed change bullets were not supplied; see the summary above.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `2a2f4fe` | (see git log) |
+
+### Testing
+
+- Validation was not recorded for this session.
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
