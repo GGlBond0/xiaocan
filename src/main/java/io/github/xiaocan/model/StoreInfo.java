@@ -142,14 +142,6 @@ public class StoreInfo {
      * 返现条件（字符串）
      */
     private String rebateConditionStr;
-    /**
-     * 收藏id
-     */
-    private Long favoriteId;
-    /**
-     * 是否存在
-     */
-    private Boolean exists;
 
     /**
      * 带单位距离 setter，与数值 distance(米) 互转同步（与上游一致）。

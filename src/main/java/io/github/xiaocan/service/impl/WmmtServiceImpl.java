@@ -8,8 +8,6 @@ import io.github.xiaocan.model.entity.LocationEntity;
 import io.github.xiaocan.model.entity.UserEntity;
 import io.github.xiaocan.model.enums.StoreTypeEnum;
 import io.github.xiaocan.model.vo.WmPageVO;
-import io.github.xiaocan.service.FavoriteStoreService;
-import io.github.xiaocan.service.StoreInventoryHistoryService;
 import io.github.xiaocan.service.UserService;
 import io.github.xiaocan.service.WmmtService;
 import jakarta.annotation.Resource;
@@ -33,23 +31,13 @@ public class WmmtServiceImpl implements WmmtService {
 
 
     @Resource
-    private StoreInventoryHistoryService storeInventoryHistoryService;
-
-    @Resource
     private UserService userService;
-
-    @Resource
-    private FavoriteStoreService favoriteStoreService;
 
     @Override
     public WmPageVO getShopList(WmmtShopListDTO dto) {
         UserEntity currentUser = userService.getByCurrentRequest();
         String waimaiToken = currentUser.getWaimaiToken();
-        WmPageVO vo = getShopList(waimaiToken, dto);
-        if (dto.getLocationId() != null && vo.getStoreInfos() != null) {
-            favoriteStoreService.fillFavoriteIds(vo.getStoreInfos(), currentUser.getId(), dto.getLocationId());
-        }
-        return vo;
+        return getShopList(waimaiToken, dto);
     }
 
     /**
@@ -60,11 +48,7 @@ public class WmmtServiceImpl implements WmmtService {
      * @return 门店列表 + 下一页游标
      */
     public WmPageVO getShopList(String waimaiToken, WmmtShopListDTO dto) {
-        WmPageVO vo = WmmtHttp.getShopList(waimaiToken, CITY, dto);
-        if (vo.getStoreInfos() != null && !vo.getStoreInfos().isEmpty()) {
-            storeInventoryHistoryService.insertBatch(vo.getStoreInfos());
-        }
-        return vo;
+        return WmmtHttp.getShopList(waimaiToken, CITY, dto);
     }
 
     @Override
