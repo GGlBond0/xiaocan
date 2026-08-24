@@ -1284,3 +1284,36 @@ Trellis任务08-24-trim-upstream-modules: 从分支feat/upstream-modules移除fa
 ### Next Steps
 
 - None - task complete
+
+
+## Session 38: 生产部署: 后端精简JAR重建部署 + 前端新版dist上生产 + 生产库三表清理
+
+**Date**: 2026-08-24
+**Task**: 生产部署: 后端精简JAR重建部署 + 前端新版dist上生产 + 生产库三表清理
+**Branch**: `main`
+
+### Summary
+
+继合并后: ①生产库DROP三张空表(favorite_store/store_inventory_history/message_batch_record, 均0行) ②前端打包新版dist(13JS含WmmtView不含已删页面)分片上传部署, 一度dist/dist嵌套坑经--strip-components修复, 8088+域名200健康 ③后端本地mvn重建43MB JAR分片上传md5校验一致, 备份bak.20260824-101806, 替换重启active+10234监听, 已删接口返回url路径不存在确认生效, wmmt保留接口200
+
+### Main Changes
+
+- Detailed change bullets were not supplied; see the summary above.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `63ce83a` | (see git log) |
+
+### Testing
+
+- Validation was not recorded for this session.
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
