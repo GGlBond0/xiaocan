@@ -1,7 +1,7 @@
-# Upstream Modules Merge（强耦合网合入专项设计）
+# Upstream Modules Merge（上游模块合入 & 精简记录）
 
-> 把上游 lyrric/xiaochan 的强耦合功能网（歪麦/收藏/库存历史/门店搜索/消息批量）在**本地二开底座上**以最小侵入方式移植合入。
-> 关联记忆：`upstream-fork-merge-analysis`。第一批低风险增量已完成（commit ef4bafb）；本专项五模块 L0→L4 全量合入 + 生产 Schema 增量已落地（2026-08-21）。
+> 把上游 lyrric/xiaochan 的强耦合功能网（歪麦/收藏/库存历史/门店搜索/消息批量）在**本地二开底座上**以最小侵入方式移植合入，并于 2026-08-24 精简——删除其中 4 个非核心模块，**仅保留歪麦（Wmmt）数据层**作为后续歪麦监控/抢单的地基。
+> 关联记忆：`upstream-fork-merge-analysis`。第一批低风险增量已完成（commit ef4bafb）；本专项五模块 L0→L4 全量合入 + 生产 Schema 增量 + 精简删除均已完成（2026-08-21 合入 / 2026-08-24 精简）。
 
 ---
 
@@ -14,11 +14,19 @@
 - **新增五模块作为独立可用能力**：新增 Controller + Service，内部自取数据，**不接入本地监控任务链**，**不改本地现有数据流**。
 - 只做**加法**：补实体字段、补缺失 bean/方法、新增新类，使五模块编译运行。
 
-## 用户决策（已确认）
+## 用户决策（原始合入 vs 精简）
+**原始合入决策（2026-08-21）**：
 1. 五件全做：歪麦 + 收藏 + 库存历史 + 门店搜索 + 消息批量。
 2. StoreInfo **加法扩展**：新增 8 字段（`uniqId/storeTypeEnum/distanceStr/rebateRatio/rebateMax/rebateConditionStr/favoriteId/exists`），保留本地 storeId/promotionId(Integer)/distance/rebateCondition/openHours/ifNew。
 3. 歪麦加 `waimaiToken`（UserEntity 新字段 + `waimai_token` 列）。
 4. 独立能力，不改本地任务链 / 数据流 / 现有表结构。
+
+**精简决策（2026-08-24, trim-upstream-modules）**：
+- 删除：收藏 Favorite / 库存历史 StoreInventoryHistory / 消息批量 MessageBatch / 小蚕美团赏金 XC_MTSJ / 聚合搜索 StoreSearch（5 模块）+ 孤立 VO（SimpleStoreInfo/BookVO/IgnoreStoreVO）。
+- **保留**：歪麦数据层 `WmmtHttp/WmmtService(Impl)/WmmtShopListDTO/WmPageVO` + `WmmtController`/`fetchWmStoreInfos` + `UserEntity.waimaiToken`（歪麦地基，后续监控/抢单开发用）。
+- 拆依赖：`XiaoChanService(Impl)` 去掉收藏/库存/美团赏金引用；`WmmtServiceImpl` 摘收藏/库存注入；`XiaochanHttp` 删美团赏金 3 方法。
+- **歪麦抢单走独立开发**（歪麦 token/加密/接口 vs 小蚕完全脱钩），不依赖小蚕抢单（`orderExchange`/`grabPromotionQuota`）。
+- DDL：删 `favorite_store/store_inventory_history/message_batch_record` 三表 + `store_pushed_history.batch_id` 列；保留 `user.waimai_token`。生产库未动（本次仅代码/spec 精简，生产升级另决策）。
 
 ## 关键事实（已第一手核实）
 - 本地 `XiaochanHttp` 是**实例方法 + new 实例**（GrabServiceImpl:55、XiaoChanServiceImpl:27）。本地 getList/searchList 签名与上游一致；本地缺 `searchMeituanList/getMeituanList`。
