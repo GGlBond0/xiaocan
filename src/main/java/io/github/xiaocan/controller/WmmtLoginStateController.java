@@ -32,8 +32,9 @@ public class WmmtLoginStateController {
 
     /**
      * 当前用户歪麦账号列表（token 掩码）
+     * 同时暴露根路径 GET 与 /list，前端监控配置页调用根路径，登录态页调用 /list，两处兼容。
      */
-    @GetMapping("/list")
+    @GetMapping({"/list", ""})
     public BaseResult<List<WmmtLoginStateVO>> list() {
         return BaseResult.ok(wmmtLoginStateService.list());
     }
