@@ -20,6 +20,11 @@ public interface StorePushedHistoryService extends IService<StorePushedHistoryEn
 
     StorePushedHistoryEntity findByNotifyIdAndStoreIdToday(Integer notifyId, Integer storeId);
 
+    /**
+     * 查询某监控配置下、指定门店唯一id(uniq_id)当天是否有已推送记录（歪麦 STORE_ACTIVITY 当天去重用）。
+     */
+    StorePushedHistoryEntity findByNotifyIdAndUniqIdToday(Integer notifyId, String uniqId);
+
     StorePushedHistoryEntity findByNotifyIdAndStoreIdAll(Integer notifyId, Integer storeId);
 
     /**

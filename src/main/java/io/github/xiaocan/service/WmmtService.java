@@ -27,4 +27,13 @@ public interface WmmtService {
      * @param keyword 门店名模糊搜索，为空时拉取全量列表
      */
     List<StoreInfo> fetchWmStoreInfos(StoreTypeEnum storeType, LocationEntity location, String keyword);
+
+    /**
+     * 按指定歪麦 token 抓取门店活动（监控/抢单用，逐步替代单账号 user.waimai_token 路径）。
+     * storeType 可为 null：null 表示不过滤业态（满减+美团赏金都返回），供监控「活动语义」过滤。
+     *
+     * @param token    歪麦 token（来自 wmmt_login_state）
+     * @param storeType 门店业态过滤，null 不过滤
+     */
+    List<StoreInfo> fetchWmStoreInfos(String token, StoreTypeEnum storeType, LocationEntity location, String keyword);
 }

@@ -70,6 +70,10 @@ public class StoreTask extends BaseTask {
             log.info("开始执行 门店活动定时任务 STORE_ACTIVITY:{}个，STORE_KEYWORD:{}个", storeActivityCount, storeKeywordCount);
 
             for (MonitorConfigEntity notifyConfig : all) {
+                // 歪麦数据源由 WmmtTask 处理，小蚕 StoreTask 跳过，避免重复抓取/重复推送
+                if (Integer.valueOf(2).equals(notifyConfig.getSource())) {
+                    continue;
+                }
                 execute(notifyConfig, false);
             }
         }catch (Exception e){

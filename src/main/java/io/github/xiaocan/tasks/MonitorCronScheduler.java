@@ -5,6 +5,7 @@ import io.github.xiaocan.model.enums.MonitorConfigStatusEnums;
 import io.github.xiaocan.model.enums.MonitorTypeEnums;
 import io.github.xiaocan.service.MonitoryConfigService;
 import jakarta.annotation.Resource;
+import org.springframework.context.annotation.Lazy;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
@@ -32,6 +33,9 @@ public class MonitorCronScheduler {
     private StoreTask storeTask;
     @Resource
     private MinimumPayService minimumPayService;
+    @Resource
+    @Lazy
+    private WmmtTask wmmtTask;
 
     private final Map<Integer, ScheduledFuture<?>> scheduledFutureMap = new ConcurrentHashMap<>();
 
@@ -117,7 +121,10 @@ public class MonitorCronScheduler {
             return;
         }
         try {
-            if (latest.getType() == MonitorTypeEnums.MINIMUM_PAY) {
+            if (Integer.valueOf(2).equals(latest.getSource())) {
+                // 歪麦数据源：走 WmmtTask（其内部按 type 覆写 fetch/filter）
+                wmmtTask.execute(latest, true);
+            } else if (latest.getType() == MonitorTypeEnums.MINIMUM_PAY) {
                 minimumPayService.execute(latest, true);
             } else {
                 storeTask.execute(latest, true);

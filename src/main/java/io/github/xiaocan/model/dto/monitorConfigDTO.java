@@ -85,5 +85,18 @@ public class monitorConfigDTO {
      * 抢单模式 SINGLE/ALL，null → SINGLE。仅 autoGrab=true 时有意义。
      */
     private GrabModeEnums grabMode;
+    /**
+     * 监控数据源 1小蚕(默认) 2歪麦
+     */
+    private Integer source;
+    /**
+     * 歪麦账号单值（保存时回填有序列表第一个），指向 wmmt_login_state.id。仅 source=2 有意义。
+     */
+    private Integer wmmtLoginStateId;
+    /**
+     * 歪麦有序账号 id 串，逗号分隔，顺序即优先级（如 "12,5,8"）。
+     * null/空 → 回退 wmmtLoginStateId 单值。仅 source=2 有意义。
+     */
+    private String wmmtLoginStateIds;
 
 }

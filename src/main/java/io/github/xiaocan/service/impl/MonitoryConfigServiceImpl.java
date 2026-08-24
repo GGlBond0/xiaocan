@@ -16,6 +16,7 @@ import io.github.xiaocan.model.vo.NotifyConfigVO;
 import io.github.xiaocan.service.LoginStateService;
 import io.github.xiaocan.service.MonitoryConfigService;
 import io.github.xiaocan.service.UserService;
+import io.github.xiaocan.service.WmmtLoginStateService;
 import io.github.xiaocan.tasks.MonitorCronScheduler;
 import io.github.xiaocan.utils.MonitorPlatforms;
 import jakarta.annotation.Resource;
@@ -48,6 +49,9 @@ public class MonitoryConfigServiceImpl extends ServiceImpl<NotifyConfigMapper, M
     @Resource
     @Lazy
     private LoginStateService loginStateService;
+    @Resource
+    @Lazy
+    private WmmtLoginStateService wmmtLoginStateService;
 
     /**
      * scheduler 副作用（refresh/cancel）推迟到当前事务提交后执行，确保 refresh 内 getById
@@ -177,6 +181,38 @@ public class MonitoryConfigServiceImpl extends ServiceImpl<NotifyConfigMapper, M
             dto.setGrabLoginStateIds(null);
             dto.setGrabMode(null);
         }
+
+        // 数据源路由：source 默认 1（小蚕，向后兼容既有配置）。source==2 歪麦。
+        Integer source = dto.getSource() == null ? 1 : dto.getSource();
+        dto.setSource(source);
+        if (source == 2) {
+            // 歪麦源：绑定歪麦账号（多账号优先级）。本轮歪麦只通知不抢，autoGrab 强制 false。
+            dto.setAutoGrab(false);
+            dto.setGrabLoginStateId(null);
+            dto.setGrabLoginStateIds(null);
+            dto.setGrabMode(null);
+            java.util.List<Integer> wmtAccountIds = parseWmmtAccountIds(dto.getWmmtLoginStateIds(), dto.getWmmtLoginStateId());
+            if (wmtAccountIds.isEmpty()) {
+                throw new BusinessException("歪麦监控必须选择歪麦账号");
+            }
+            // 每个 id 必须存在且属于当前用户，去重保序
+            java.util.LinkedHashSet<Integer> wseen = new java.util.LinkedHashSet<>();
+            for (Integer id : wmtAccountIds) {
+                if (id == null) continue;
+                wmmtLoginStateService.getOwnedById(id, user.getId());
+                wseen.add(id);
+            }
+            if (wseen.isEmpty()) {
+                throw new BusinessException("歪麦监控必须选择歪麦账号");
+            }
+            dto.setWmmtLoginStateIds(joinIds(wseen));
+            dto.setWmmtLoginStateId(wseen.iterator().next());
+        } else {
+            // 小蚕源：清空歪麦账号绑定，避免脏数据
+            dto.setWmmtLoginStateId(null);
+            dto.setWmmtLoginStateIds(null);
+        }
+
         // 生效平台：null=全开；非空须至少 1 个合法码（1/2/3），规整化后写回
         if (StringUtils.hasText(dto.getGrabPlatforms())) {
             if (!MonitorPlatforms.isValidForSave(dto.getGrabPlatforms())) {
@@ -275,6 +311,28 @@ public class MonitoryConfigServiceImpl extends ServiceImpl<NotifyConfigMapper, M
         }
         if (list.isEmpty() && grabLoginStateId != null) {
             list.add(grabLoginStateId);
+        }
+        return list;
+    }
+
+    /**
+     * 解析歪麦账号优先级列表：优先 wmmtLoginStateIds（逗号串），空则回退 wmmtLoginStateId 单值。
+     * 保留输入顺序，不去重（去重在调用处做）。
+     */
+    private java.util.List<Integer> parseWmmtAccountIds(String wmmtLoginStateIds, Integer wmmtLoginStateId) {
+        java.util.List<Integer> list = new java.util.ArrayList<>();
+        if (wmmtLoginStateIds != null && !wmmtLoginStateIds.isBlank()) {
+            for (String s : wmmtLoginStateIds.split(",")) {
+                String t = s.trim();
+                if (!t.isEmpty()) {
+                    try {
+                        list.add(Integer.parseInt(t));
+                    } catch (NumberFormatException ignore) { /* 跳过非法 */ }
+                }
+            }
+        }
+        if (list.isEmpty() && wmmtLoginStateId != null) {
+            list.add(wmmtLoginStateId);
         }
         return list;
     }

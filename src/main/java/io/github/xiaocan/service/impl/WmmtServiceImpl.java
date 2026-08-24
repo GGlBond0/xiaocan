@@ -54,14 +54,18 @@ public class WmmtServiceImpl implements WmmtService {
     @Override
     public List<StoreInfo> fetchWmStoreInfos(StoreTypeEnum storeType, LocationEntity location, String keyword) {
         UserEntity user = userService.getById(location.getUserId());
-        String waimaiToken = user.getWaimaiToken();
+        return fetchWmStoreInfos(user.getWaimaiToken(), storeType, location, keyword);
+    }
+
+    @Override
+    public List<StoreInfo> fetchWmStoreInfos(String token, StoreTypeEnum storeType, LocationEntity location, String keyword) {
         WmmtShopListDTO dto = new WmmtShopListDTO();
         dto.setName(keyword);
         dto.setLatitude(location.getLatitude());
         dto.setLongitude(location.getLongitude());
         List<StoreInfo> storeInfos = new ArrayList<>();
         for (int i = 0; i < 100; i++) {
-            WmPageVO vo = getShopList(waimaiToken, dto);
+            WmPageVO vo = getShopList(token, dto);
             if (vo.getStoreInfos() == null || vo.getStoreInfos().isEmpty()) {
                 break;
             }
@@ -76,6 +80,9 @@ public class WmmtServiceImpl implements WmmtService {
                 break;
             }
             dto.setScrollPageData(vo.getScrollPageData());
+        }
+        if (storeType == null) {
+            return storeInfos;
         }
         return storeInfos.stream()
                 .filter(storeInfo -> storeInfo.getStoreTypeEnum() == storeType)

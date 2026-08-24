@@ -75,6 +75,15 @@ public class WmmtLoginStateServiceImpl implements WmmtLoginStateService {
         log.info("歪麦登录态删除 id={}, userId={}", id, uid);
     }
 
+    @Override
+    public WmmtLoginStateEntity getOwnedById(Integer id, Integer ownerId) {
+        WmmtLoginStateEntity entity = wmmtLoginStateMapper.selectById(id);
+        if (entity == null || !entity.getUserId().equals(ownerId)) {
+            throw new BusinessException("所选歪麦账号不存在或无权使用: id=" + id);
+        }
+        return entity;
+    }
+
     private WmmtLoginStateVO toVO(WmmtLoginStateEntity e) {
         WmmtLoginStateVO vo = new WmmtLoginStateVO();
         vo.setId(e.getId());

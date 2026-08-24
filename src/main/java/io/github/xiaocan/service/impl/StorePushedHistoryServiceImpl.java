@@ -58,6 +58,18 @@ public class StorePushedHistoryServiceImpl extends ServiceImpl<StorePushedHistor
 
 
     @Override
+    public StorePushedHistoryEntity findByNotifyIdAndUniqIdToday(Integer notifyId, String uniqId) {
+        LocalDateTime todayStart = LocalDateTime.now().withHour(0).withMinute(0).withSecond(0).withNano(0);
+        LocalDateTime todayEnd = todayStart.plusDays(1);
+        return lambdaQuery()
+                .eq(StorePushedHistoryEntity::getNotifyConfigId, notifyId)
+                .eq(StorePushedHistoryEntity::getUniqId, uniqId)
+                .last("limit 1")
+                .between(StorePushedHistoryEntity::getCreateTime, todayStart, todayEnd)
+                .one();
+    }
+
+    @Override
     public StorePushedHistoryEntity findByNotifyIdAndStoreIdAll(Integer notifyId, Integer storeId) {
         return lambdaQuery()
                 .eq(StorePushedHistoryEntity::getNotifyConfigId, notifyId)
@@ -70,7 +82,8 @@ public class StorePushedHistoryServiceImpl extends ServiceImpl<StorePushedHistor
     public List<StorePushedHistoryEntity> findPushedWithinMinutes(Integer notifyId, int minutes) {
         return lambdaQuery()
                 .select(StorePushedHistoryEntity::getStoreId,
-                        StorePushedHistoryEntity::getPromotionId)
+                        StorePushedHistoryEntity::getPromotionId,
+                        StorePushedHistoryEntity::getUniqId)
                 .eq(StorePushedHistoryEntity::getNotifyConfigId, notifyId)
                 .ge(StorePushedHistoryEntity::getCreateTime, LocalDateTime.now().minusMinutes(minutes))
                 .list();

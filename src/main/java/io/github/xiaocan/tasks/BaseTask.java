@@ -247,7 +247,7 @@ public class BaseTask {
         }
     }
 
-    private void savePushedHistory(MonitorConfigEntity notifyConfig, List<StoreInfo> storeInfos){
+    protected void savePushedHistory(MonitorConfigEntity notifyConfig, List<StoreInfo> storeInfos){
         List<StorePushedHistoryEntity> entities = storeInfos.stream().map(storeInfo -> {
             StorePushedHistoryEntity entity = new StorePushedHistoryEntity();
             BeanUtils.copyProperties(storeInfo, entity);
@@ -255,6 +255,12 @@ public class BaseTask {
             entity.setUserId(notifyConfig.getUserId());
             entity.setNotifyConfigId(notifyConfig.getId());
             entity.setNotifyType(notifyConfig.getType());
+            entity.setUniqId(storeInfo.getUniqId());
+            // store_id 列 NOT NULL；仅歪麦门店（有 uniqId 但无 Integer storeId）填 0 占位，真实门店键走 uniq_id。
+            // 小蚕 storeId 恒有值；若上游异常为 null 则保持原样（触发 NOT NULL 暴露缺陷，而非用 0 掩盖）。
+            if (entity.getStoreId() == null && StringUtils.hasText(storeInfo.getUniqId())) {
+                entity.setStoreId(0);
+            }
             return entity;
         }).toList();
         storePushedHistoryService.saveBatch(entities);

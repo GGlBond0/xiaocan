@@ -1,6 +1,7 @@
 package io.github.xiaocan.service;
 
 import io.github.xiaocan.model.dto.WmmtLoginStateDTO;
+import io.github.xiaocan.model.entity.WmmtLoginStateEntity;
 import io.github.xiaocan.model.vo.WmmtLoginStateVO;
 
 import java.util.List;
@@ -25,4 +26,14 @@ public interface WmmtLoginStateService {
      * 删除当前用户某账号（归属校验，非本人抛异常）
      */
     void delete(Integer id);
+
+    /**
+     * 按 id 取某用户（归属）的歪麦账号实体：校验存在且 userId 匹配，不匹配抛异常。
+     * 定时任务（无 HTTP 上下文）显式传 ownerId 使用；service 层可经当前用户调用。
+     *
+     * @param id      歪麦账号 id
+     * @param ownerId 归属系统用户 id
+     * @return 歪麦账号实体（未删）
+     */
+    WmmtLoginStateEntity getOwnedById(Integer id, Integer ownerId);
 }

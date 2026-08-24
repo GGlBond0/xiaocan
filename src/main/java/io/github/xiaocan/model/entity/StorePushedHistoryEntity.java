@@ -45,6 +45,10 @@ public class StorePushedHistoryEntity {
      */
     private Integer storeId;
     /**
+     * 门店唯一id（wm_poi_id 等，歪麦用；小蚕为 null）
+     */
+    private String uniqId;
+    /**
      * 是否是新店
      */
     private Boolean ifNew;

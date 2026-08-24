@@ -104,6 +104,10 @@ public class MinimumPayService extends BaseTask {
             log.info("开始执行 最小实付活动 定时任务");
             List<MonitorConfigEntity> notifyConfigList = monitoryConfigService.listWithoutCron(MonitorTypeEnums.MINIMUM_PAY, MonitorConfigStatusEnums.ENABLE);
             for (MonitorConfigEntity notifyConfig : notifyConfigList) {
+                // 歪麦数据源由 WmmtTask 处理，小蚕最小实付执行体跳过，避免重复抓取/重复推送
+                if (Integer.valueOf(2).equals(notifyConfig.getSource())) {
+                    continue;
+                }
                 execute(notifyConfig, false);
             }
         }catch (Exception e){
@@ -117,6 +121,10 @@ public class MinimumPayService extends BaseTask {
      * @param cronDriven true 表示由 cron 动态调度器触发，跳过时间窗口和静默期检查
      */
     public void execute(MonitorConfigEntity notifyConfig, boolean cronDriven) {
+        // 仅处理小蚕源；歪麦源交回 WmmtTask（双保险，cron 调度已按 source 分派）
+        if (Integer.valueOf(2).equals(notifyConfig.getSource())) {
+            return;
+        }
         runSingle(notifyConfig, cronDriven);
     }
 }

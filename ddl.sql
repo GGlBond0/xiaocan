@@ -439,3 +439,24 @@ CREATE TABLE IF NOT EXISTS `wmmt_login_state` (
   KEY `idx_user_id` (`user_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='歪麦登录态池';
 
+-- ============================
+-- 监控配置：数据源 + 歪麦账号绑定 (2026-08-24, task 08-24-wmmt-monitor-notify)
+-- source: 数据源 1小蚕(默认)/2歪麦。既有小蚕配置不显式赋值 source 时走默认1，行为不变。
+-- wmmt_login_state_id(s): 歪麦登录态绑定，指向 wmmt_login_state.id；单值回填有序列表首个，语义仿 grab_login_state_id(s)。
+-- 本轮歪麦监控只通知不抢(autoGrab 对 source=2 强制 false)。
+-- 生产只执行本段。禁止整文件导入本 ddl.sql（前半含 DROP TABLE IF EXISTS）。
+-- ============================
+ALTER TABLE `monitor_config`
+  ADD COLUMN `source` INT NOT NULL DEFAULT 1 COMMENT '监控数据源 1小蚕 2歪麦',
+  ADD COLUMN `wmmt_login_state_id` INT NULL DEFAULT NULL COMMENT '歪麦账号单值(保存回填有序列表首个), 指向 wmmt_login_state.id',
+  ADD COLUMN `wmmt_login_state_ids` VARCHAR(255) NULL COMMENT '歪麦有序账号id串,逗号分隔,顺序=优先级; 空回退wmmt_login_state_id(仅source=2时有效)';
+
+-- ============================
+-- 门店推送历史：门店唯一id列 (2026-08-24, task 08-24-wmmt-monitor-notify)
+-- 歪麦门店仅有 String uniqId（wm_poi_id），store_id(Integer) 为 null。
+-- store_id 保持 NOT NULL 约束，歪麦记录 store_id 填 0 占位、真实门店键存 uniq_id。
+-- 去重/展示以 uniq_id 为准（有值优先）。小蚕记录 uniq_id 为 null，行为不变。
+-- ============================
+ALTER TABLE `store_pushed_history`
+  ADD COLUMN `uniq_id` VARCHAR(64) NULL DEFAULT NULL COMMENT '门店唯一id(wm_poi_id等), 歪麦用; 小蚕为null' AFTER `store_id`;
+
