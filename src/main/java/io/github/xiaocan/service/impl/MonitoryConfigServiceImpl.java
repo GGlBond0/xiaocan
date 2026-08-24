@@ -149,8 +149,9 @@ public class MonitoryConfigServiceImpl extends ServiceImpl<NotifyConfigMapper, M
         }
 
         UserEntity user = userService.getByCurrentRequest();
-        // 自动抢单校验：开启时必须绑定属于当前用户的登录态（支持多账号优先级）
-        if (Boolean.TRUE.equals(dto.getAutoGrab())) {
+        // 自动抢单校验：开启时必须绑定属于当前用户的登录态（支持多账号优先级）。
+        // source==2 歪麦源跳过本校验——歪麦账号(wmmtLoginStateId(s))由下方 source 分支校验。
+        if (Boolean.TRUE.equals(dto.getAutoGrab()) && !Integer.valueOf(2).equals(dto.getSource())) {
             // 解析账号优先级列表：优先 grabLoginStateIds，空则回退 grabLoginStateId 单值
             java.util.List<Integer> accountIds = parseAccountIds(dto.getGrabLoginStateIds(), dto.getGrabLoginStateId());
             if (accountIds.isEmpty()) {
@@ -186,8 +187,8 @@ public class MonitoryConfigServiceImpl extends ServiceImpl<NotifyConfigMapper, M
         Integer source = dto.getSource() == null ? 1 : dto.getSource();
         dto.setSource(source);
         if (source == 2) {
-            // 歪麦源：绑定歪麦账号（多账号优先级）。本轮歪麦只通知不抢，autoGrab 强制 false。
-            dto.setAutoGrab(false);
+            // 歪麦源：绑定歪麦账号（多账号优先级）。小蚕抢单字段清空，避免跨源脏数据。
+            // 本轮已支持歪麦自动抢(autoGrab)；抢单时账号缺 userId 会明确提示（见 GrabServiceImpl.doGrabWmmt）。
             dto.setGrabLoginStateId(null);
             dto.setGrabLoginStateIds(null);
             dto.setGrabMode(null);

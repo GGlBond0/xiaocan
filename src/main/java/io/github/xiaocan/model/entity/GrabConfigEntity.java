@@ -106,6 +106,22 @@ public class GrabConfigEntity {
      */
     private String comboSnapshot;
     /**
+     * 抢单数据源：1小蚕(默认) 2歪麦。歪麦走 WmmtHttp.signUp；小蚕走 grabPromotionQuota/orderExchange。
+     */
+    private Integer source;
+    /**
+     * 歪麦门店id（businessId, String），仅 source=2 时有效；歪麦提交接口请求体含 businessId。
+     */
+    private String wmmtBusinessId;
+    /**
+     * 歪麦活动键（overbearfoodId, String），仅 source=2 时有效；歪麦提交接口用它（promotion_id INT 不足以承载原始串）。
+     */
+    private String wmmtOverbearFoodId;
+    /**
+     * 歪麦账号id（指向 wmmt_login_state.id），仅 source=2 时有效；小蚕单用 loginStateId。
+     */
+    private Integer wmmtLoginStateId;
+    /**
      * 活动快照：商家名
      */
     private String storeName;

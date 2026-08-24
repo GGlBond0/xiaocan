@@ -69,6 +69,8 @@ public class AutoGrabServiceImpl implements AutoGrabService {
     private PushService pushService;
     @Resource
     private MonitoryConfigService monitoryConfigService;
+    @Resource
+    private io.github.xiaocan.service.WmmtLoginStateService wmmtLoginStateService;
 
     /** 立即抢异步执行池，独立于 taskScheduler，避免阻塞 monitor-cron 线程 */
     private final ExecutorService grabExecutor = Executors.newCachedThreadPool();
@@ -79,6 +81,11 @@ public class AutoGrabServiceImpl implements AutoGrabService {
         if (!Boolean.TRUE.equals(config.getAutoGrab())) return null;
 
         Integer userId = config.getUserId();
+
+        // 歪麦数据源(source=2)：独立建抢单(不走小蚕手机/平台组合逻辑)
+        if (Integer.valueOf(2).equals(config.getSource())) {
+            return tryCreateWmmtFromMonitor(config, sameStoreCombos);
+        }
 
         // 1. 账号优先级列表（过滤过期/不存在，保序）
         List<Integer> accountIds = parseAccountIds(config);
@@ -137,6 +144,135 @@ public class AutoGrabServiceImpl implements AutoGrabService {
         final List<StoreInfo> combos = orderedCombos;
         grabExecutor.submit(() -> runSingle(config, userId, validAccounts, combos, 0, 0));
         return null;
+    }
+
+    // ==================== 歪麦自动抢（source=2） ====================
+
+    /**
+     * 歪麦监控命中自动建抢单。与小蚕不同：
+     *  - 账号来自 wmmtLoginStateIds → wmmt_login_state（非 login_state）。
+     *  - 活动键 overbearfoodId；门店 businessId = StoreInfo.uniqId。
+     *  - 歪麦抢单不分平台组合/换号降级——一次命中选最高优先级可用账号建一条 grab_config，异步 doGrab。
+     *  - 防重：同(账号, overbearfoodId)当天 auto=1 且 lastGrabTime IS NULL 的占位存在则跳过。
+     *
+     * @return 建成的 grab_config.id；未建返回 null
+     */
+    private Long tryCreateWmmtFromMonitor(MonitorConfigEntity config, List<StoreInfo> sameStoreCombos) {
+        Integer userId = config.getUserId();
+        // 1. 解析歪麦账号优先级（wmmtLoginStateIds → 单值回退），过滤有 token 的账号
+        List<Integer> accountIds = parseWmmtAccountIds(config);
+        List<Integer> validAccounts = new ArrayList<>();
+        for (Integer id : accountIds) {
+            try {
+                io.github.xiaocan.model.entity.WmmtLoginStateEntity acc =
+                        wmmtLoginStateService.getOwnedById(id, userId);
+                if (acc != null && StringUtils.hasText(acc.getToken())) {
+                    validAccounts.add(id);
+                }
+            } catch (Exception e) {
+                log.warn("歪麦自动抢账号 {} 不可用: {}", id, e.getMessage());
+            }
+        }
+        if (validAccounts.isEmpty()) {
+            log.warn("歪麦自动抢跳过(无可用账号): userId={}, configId={}", userId, config.getId());
+            pushExpireReminder(config, null);
+            return null;
+        }
+        // 2. 取第一个命中组合（歪麦一次命中=一个门店活动；sameStoreCombos 可能含多个 sku，取首个）
+        StoreInfo store = sameStoreCombos.get(0);
+        String businessId = StringUtils.hasText(store.getUniqId()) ? store.getUniqId() : null;
+        String overbearFoodId = store.getOverbearFoodId();
+        if (!StringUtils.hasText(overbearFoodId)) {
+            log.warn("歪麦自动抢跳过(活动键缺失 overbearfoodId): userId={}, configId={}", userId, config.getId());
+            return null;
+        }
+        Integer account = validAccounts.get(0);
+        // 防重：同账号同活动当天已有未消费占位 → 跳过
+        if (hasWmmtPlaceholder(userId, overbearFoodId, account)) {
+            log.info("歪麦自动抢跳过(同账号已有占位): userId={}, overbearfoodId={}, account={}",
+                    userId, overbearFoodId, account);
+            return null;
+        }
+        // 3. 建 grab_config 占位(source=2)，异步 doGrab
+        GrabConfigEntity entity = buildWmmtEntity(config, store, userId, overbearFoodId, account, businessId);
+        entity.setAuto(true);
+        entity.setStatus(MonitorConfigStatusEnums.ENABLE);
+        entity.setExecuteAt(LocalDateTime.now());
+        entity.setCron(null);
+        entity.setLastResult(RUNNING_MARK);
+        entity.setMonitorConfigId(config.getId());
+        grabService.save(entity);
+        log.info("歪麦自动抢已建占位: grabConfigId={}, userId={}, overbearfoodId={}, account={}",
+                entity.getId(), userId, overbearFoodId, account);
+        final GrabConfigEntity saved = entity;
+        final Integer acc = account;
+        grabExecutor.submit(() -> {
+            GrabResultVO r = grabService.doGrab(saved, "AUTO");
+            if (r == null || !Boolean.TRUE.equals(r.getSuccess())) {
+                markConsumed(saved.getId(), r == null ? -1 : (r.getCode() == null ? -1 : r.getCode()),
+                        r == null ? "执行失败" : r.getMsg());
+            }
+        });
+        return entity.getId() == null ? null : entity.getId().longValue();
+    }
+
+    /** 解析歪麦账号优先级列表：wmmtLoginStateIds 空 → 回退 wmmtLoginStateId 单值。保序。 */
+    private List<Integer> parseWmmtAccountIds(MonitorConfigEntity config) {
+        List<Integer> list = new ArrayList<>();
+        String ids = config.getWmmtLoginStateIds();
+        if (StringUtils.hasText(ids)) {
+            for (String s : ids.split(",")) {
+                String t = s.trim();
+                if (!t.isEmpty()) {
+                    try { list.add(Integer.parseInt(t)); } catch (NumberFormatException ignore) {}
+                }
+            }
+        }
+        if (list.isEmpty() && config.getWmmtLoginStateId() != null) {
+            list.add(config.getWmmtLoginStateId());
+        }
+        return list;
+    }
+
+    /** 歪麦防重：同账号同活动当天 auto=1 且 lastGrabTime IS NULL 的占位存在则 true。 */
+    private boolean hasWmmtPlaceholder(Integer userId, String overbearFoodId, Integer account) {
+        if (overbearFoodId == null || account == null) return false;
+        long c = grabService.lambdaQuery()
+                .eq(GrabConfigEntity::getUserId, userId)
+                .eq(GrabConfigEntity::getWmmtOverbearFoodId, overbearFoodId)
+                .eq(GrabConfigEntity::getWmmtLoginStateId, account)
+                .eq(GrabConfigEntity::getAuto, true)
+                .apply("DATE(create_time) = CURDATE()")
+                .isNull(GrabConfigEntity::getLastGrabTime)
+                .count();
+        return c > 0;
+    }
+
+    /** 组装歪麦 grab_config 基础字段 + 活动快照。 */
+    private GrabConfigEntity buildWmmtEntity(MonitorConfigEntity config, StoreInfo store,
+                                             Integer userId, String overbearFoodId,
+                                             Integer account, String businessId) {
+        GrabConfigEntity entity = new GrabConfigEntity();
+        entity.setUserId(userId);
+        entity.setWmmtLoginStateId(account);
+        entity.setLocationId(config.getLocationId());
+        // 歪麦 sku 的 promotionId(INT) 可能为 null(美团赏金类型)，grab_history.promotion_id NOT NULL → 兜底 0 占位
+        entity.setPromotionId(store.getPromotionId() != null ? store.getPromotionId() : 0);
+        entity.setStorePlatform(store.getType() == null ? 1 : store.getType());
+        entity.setIfAdvanceOrder(false);
+        entity.setLeadMs(0);
+        entity.setEnableRetry(true);
+        entity.setMaxRetry(3);
+        entity.setRetryIntervalMs(500);
+        entity.setSilkId(0);
+        entity.setSource(2);
+        entity.setWmmtBusinessId(businessId);
+        entity.setWmmtOverbearFoodId(overbearFoodId);
+        entity.setStoreName(store.getName());
+        entity.setPromoDetail(buildPromoDetail(store));
+        entity.setStartTime(store.getStartTime());
+        entity.setEndTime(store.getEndTime());
+        return entity;
     }
 
     // ==================== SINGLE 模式 ====================

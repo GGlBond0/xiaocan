@@ -60,6 +60,8 @@ public class GrabServiceImpl extends ServiceImpl<GrabConfigMapper, GrabConfigEnt
     private io.github.xiaocan.mapper.GrabHistoryMapper grabHistoryMapper;
     @Resource
     private io.github.xiaocan.service.LoginStateService loginStateService;
+    @Resource
+    private io.github.xiaocan.service.WmmtLoginStateService wmmtLoginStateService;
 
 
     // ==================== 抢单配置 ====================
@@ -164,6 +166,10 @@ public class GrabServiceImpl extends ServiceImpl<GrabConfigMapper, GrabConfigEnt
             result.setCode(-1);
             result.setMsg("用户不存在");
             return result;
+        }
+        // 歪麦数据源：走 WmmtHttp.signUp 独立链路（小蚕 loginState/auth 语义不适用）
+        if (Integer.valueOf(2).equals(config.getSource())) {
+            return doGrabWmmt(config, user, triggerType);
         }
         // 登录态：按 config.loginStateId 取（统一池 login_state）
         // doGrab 会被定时任务调用（无 HTTP 请求上下文），用显式 userId 重载避免 getByCurrentRequest 抛错
@@ -330,6 +336,144 @@ public class GrabServiceImpl extends ServiceImpl<GrabConfigMapper, GrabConfigEnt
         }
         if (finalResult == null) finalResult = fail(-1, "未知失败");
         return finalResult;
+    }
+
+    /**
+     * 歪麦抢单执行（source==2 分支）。独立于小蚕 loginState/GrabAuth 链路。
+     * <p>
+     * 需 wmmt_login_state 绑定账号(token+wmmtUserId)。无账号/无 userId → 明确失败提示，不静默。
+     * 报名费(payAmount/occupyPayAmount/secKillPayAmount>0) → 需微信支付，记失败+推送「需手动支付」，不继续。
+     */
+    private GrabResultVO doGrabWmmt(GrabConfigEntity config, UserEntity user, String triggerType) {
+        GrabResultVO result = new GrabResultVO();
+        Integer wmmtAccountId = config.getWmmtLoginStateId();
+        if (wmmtAccountId == null) {
+            result.setSuccess(false);
+            result.setCode(-1);
+            result.setMsg("歪麦抢单未绑定歪麦账号");
+            saveHistory(config, user.getId(), false, -1, "未绑定歪麦账号", null, 1, triggerType, config.getStoreName(), config.getPromoDetail());
+            return result;
+        }
+        // 取歪麦账号（仅校验归属，不依赖 HTTP 上下文）
+        io.github.xiaocan.model.entity.WmmtLoginStateEntity account;
+        try {
+            account = wmmtLoginStateService.getOwnedById(wmmtAccountId, user.getId());
+        } catch (Exception e) {
+            result.setSuccess(false);
+            result.setCode(-1);
+            result.setMsg("歪麦账号不存在或无权使用");
+            saveHistory(config, user.getId(), false, -1, "歪麦账号不存在或无权使用", null, 1, triggerType, config.getStoreName(), config.getPromoDetail());
+            return result;
+        }
+        String token = account.getToken();
+        Integer wmmtUserId = account.getWmmtUserId();
+        if (!StringUtils.hasText(token) || wmmtUserId == null) {
+            // 缺 userId：请求体必需的字段，缺失无法抢
+            String msg = !StringUtils.hasText(token) ? "歪麦账号缺 token" : "歪麦账号缺 userId，需在微信端补录后才能自动抢";
+            log.warn("歪麦抢单跳过(缺账号信息): configId={}, accountId={}, {}", config.getId(), wmmtAccountId, msg);
+            result.setSuccess(false);
+            result.setCode(-1);
+            result.setMsg(msg);
+            saveHistory(config, user.getId(), false, -1, msg, null, 1, triggerType, config.getStoreName(), config.getPromoDetail());
+            push(config, user, "抢单失败", buildPushPrefix(config, config.getStoreName(), config.getPromoDetail()) + " " + msg);
+            return result;
+        }
+        // 位置（歪麦也需经纬度/城市上下文，复用 locationId）
+        String lat, lng;
+        Optional<LocationEntity> loc = locationService.getOptById(config.getLocationId());
+        if (loc.isEmpty()) {
+            result.setSuccess(false);
+            result.setCode(-1);
+            result.setMsg("位置信息不存在");
+            saveHistory(config, user.getId(), false, -1, "位置信息不存在", null, 1, triggerType, config.getStoreName(), config.getPromoDetail());
+            return result;
+        }
+        LocationEntity location = loc.get();
+        lat = location.getLatitude();
+        lng = location.getLongitude();
+        String city = account.getCity() != null ? account.getCity() : "长沙市";
+
+        // 组装歪麦抢单请求体
+        io.github.xiaocan.http.WmmtSignUpRequest req = io.github.xiaocan.http.WmmtSignUpRequest.builder()
+                .businessId(config.getWmmtBusinessId())
+                .overbearfoodId(config.getWmmtOverbearFoodId())
+                .serviceNoStr("api_overbear_sign_up")
+                .userId(wmmtUserId)
+                .buyChannel("autonomy")
+                .type("overbear_one")
+                .shareRecordId("")
+                .shareLatitude("")
+                .shareLongitude("")
+                .shareUserId("")
+                .redIds(new java.util.ArrayList<>())
+                .province("")
+                .city("")
+                .area("")
+                .orderSourcePage("")
+                .build();
+
+        boolean retry = Boolean.TRUE.equals(config.getEnableRetry());
+        int maxRetry = retry ? Math.max(1, config.getMaxRetry() == null ? 1 : config.getMaxRetry()) : 1;
+        int interval = config.getRetryIntervalMs() == null ? 500 : config.getRetryIntervalMs();
+
+        GrabResultVO finalResult = null;
+        for (int attempt = 1; attempt <= maxRetry; attempt++) {
+            io.github.xiaocan.http.WmmtSignUpResult signUpResult;
+            try {
+                signUpResult = io.github.xiaocan.http.WmmtHttp.signUp(token, city, req);
+            } catch (Exception e) {
+                log.error("歪麦抢单请求异常 configId={}", config.getId(), e);
+                saveHistory(config, user.getId(), false, -1, "请求异常:" + e.getMessage(), null, attempt, triggerType, config.getStoreName(), config.getPromoDetail());
+                finalResult = fail(-1, "请求异常:" + e.getMessage());
+                if (attempt < maxRetry && retry) sleep(interval); else break;
+                continue;
+            }
+            if (signUpResult == null) {
+                saveHistory(config, user.getId(), false, -1, "抢单响应为空", null, attempt, triggerType, config.getStoreName(), config.getPromoDetail());
+                finalResult = fail(-1, "抢单响应为空");
+                if (attempt < maxRetry && retry) sleep(interval); else break;
+                continue;
+            }
+            boolean success = Boolean.TRUE.equals(signUpResult.getSuccess());
+            int code = signUpResult.getCode() == null ? -1 : signUpResult.getCode();
+            String msg = signUpResult.getMessage() == null ? "抢单失败" : signUpResult.getMessage();
+            Long orderId = null;
+            if (StringUtils.hasText(signUpResult.getBuyOverbearId())) {
+                try { orderId = Long.parseLong(signUpResult.getBuyOverbearId()); } catch (NumberFormatException ignore) { }
+            }
+            saveHistory(config, user.getId(), success, code, msg, orderId, attempt, triggerType, config.getStoreName(), config.getPromoDetail());
+
+            finalResult = new GrabResultVO();
+            finalResult.setCode(code);
+            finalResult.setMsg(msg);
+            finalResult.setPromotionOrderId(orderId);
+            finalResult.setSuccess(success);
+
+            if (success) {
+                this.lambdaUpdate().eq(GrabConfigEntity::getId, config.getId())
+                        .set(GrabConfigEntity::getPromotionOrderId, orderId)
+                        .set(GrabConfigEntity::getLastResult, "成功 buyOverbearId=" + signUpResult.getBuyOverbearId())
+                        .set(GrabConfigEntity::getLastGrabTime, LocalDateTime.now())
+                        .set(GrabConfigEntity::getStatus, MonitorConfigStatusEnums.DISABLE)
+                        .update();
+                grabCronScheduler.cancel(config.getId());
+                String okMsg = StringUtils.hasText(signUpResult.getBuyOverbearId())
+                        ? " 抢到，订单号 " + signUpResult.getBuyOverbearId() : " 抢到";
+                push(config, user, "抢单成功", buildPushPrefix(config, config.getStoreName(), config.getPromoDetail()) + okMsg);
+                break;
+            }
+            // 报名费>0：需微信支付，自动抢无法继续 → 明确失败 + 推送提示
+            if (Boolean.TRUE.equals(signUpResult.getNeedPay())) {
+                push(config, user, "抢单需支付", buildPushPrefix(config, config.getStoreName(), config.getPromoDetail())
+                        + " 报名费" + (signUpResult.getPayAmount() != null ? signUpResult.getPayAmount() : 0)
+                        + "元，需手动支付，自动抢已中止");
+                break;
+            }
+            // 非成功：按 tryOnce 语义记失败，结束（歪麦不做 code==4 未开始重试语义）
+            push(config, user, "抢单失败", buildPushPrefix(config, config.getStoreName(), config.getPromoDetail()) + " 失败：" + msg + "(code=" + code + ")");
+            break;
+        }
+        return finalResult == null ? fail(-1, "未知失败") : finalResult;
     }
 
     @Override

@@ -27,9 +27,13 @@ public class WmmtLoginStateEntity {
      */
     private String name;
     /**
-     * 歪麦 token（header token）
+     * 歪麦 token（header token, 登录返回 data.userToken）
      */
     private String token;
+    /**
+     * 歪麦用户id（数字，登录返回 data.userId，抢单请求体必填 ≠ token）
+     */
+    private Integer wmmtUserId;
     /**
      * 城市（默认长沙市，歪麦当前固定）
      */

@@ -431,6 +431,7 @@ CREATE TABLE IF NOT EXISTS `wmmt_login_state` (
   `user_id` INT NOT NULL COMMENT '系统用户id',
   `name` VARCHAR(100) DEFAULT NULL COMMENT '别名',
   `token` VARCHAR(255) NOT NULL COMMENT '歪麦token',
+  `wmmt_user_id` INT DEFAULT NULL COMMENT '歪麦用户id(数字, 登录返回data.userId, 抢单请求体必填)',
   `city` VARCHAR(50) DEFAULT '长沙市' COMMENT '城市',
   `create_time` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   `update_time` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
@@ -459,4 +460,21 @@ ALTER TABLE `monitor_config`
 -- ============================
 ALTER TABLE `store_pushed_history`
   ADD COLUMN `uniq_id` VARCHAR(64) NULL DEFAULT NULL COMMENT '门店唯一id(wm_poi_id等), 歪麦用; 小蚕为null' AFTER `store_id`;
+
+-- ============================
+-- 歪麦抢单 (2026-08-24, task 08-24-wmmt-grab)
+-- 1. wmmt_login_state 补 wmmt_user_id:抢单请求体需 userId(数字,≠token),登录返回 data.userId。
+--    (表定义上方已加列;此处为生产增量 ALTER,幂等环保留)。
+-- 2. grab_config 扩歪麦活动键 + 数据源:歪麦 overbearfoodId 是 String,INT promotion_id 不足承载。
+--    source: 1小蚕(默认)/2歪麦。wmmt_overbear_food_id: 歪麦活动原始串。
+-- 生产只执行本段。禁止整文件导入本 ddl.sql（前半含 DROP TABLE IF EXISTS）。
+-- ============================
+ALTER TABLE `wmmt_login_state`
+  ADD COLUMN `wmmt_user_id` INT DEFAULT NULL COMMENT '歪麦用户id(数字)';
+
+ALTER TABLE `grab_config`
+  ADD COLUMN `source` INT NOT NULL DEFAULT 1 COMMENT '抢单数据源 1小蚕 2歪麦',
+  ADD COLUMN `wmmt_business_id` VARCHAR(64) NULL DEFAULT NULL COMMENT '歪麦门店id(businessId, String), 仅source=2有效',
+  ADD COLUMN `wmmt_overbear_food_id` VARCHAR(64) NULL DEFAULT NULL COMMENT '歪麦活动键(overbearfoodId, String), 仅source=2有效',
+  ADD COLUMN `wmmt_login_state_id` INT NULL DEFAULT NULL COMMENT '歪麦账号id(指向 wmmt_login_state.id), 仅source=2有效; 小蚕用login_state_id';
 

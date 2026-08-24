@@ -39,6 +39,7 @@ public class WmmtLoginStateServiceImpl implements WmmtLoginStateService {
         WmmtLoginStateEntity entity = new WmmtLoginStateEntity();
         entity.setUserId(user.getId());
         entity.setToken(dto.getToken().trim());
+        entity.setWmmtUserId(dto.getWmmtUserId());
         entity.setCity(StringUtils.hasText(dto.getCity()) ? dto.getCity() : CITY);
         if (StringUtils.hasText(dto.getName())) {
             entity.setName(dto.getName().trim());
@@ -89,6 +90,7 @@ public class WmmtLoginStateServiceImpl implements WmmtLoginStateService {
         vo.setId(e.getId());
         vo.setName(e.getName());
         vo.setMaskedToken(maskToken(e.getToken()));
+        vo.setWmmtUserId(e.getWmmtUserId());
         vo.setCity(e.getCity());
         vo.setUpdateTime(e.getUpdateTime());
         return vo;

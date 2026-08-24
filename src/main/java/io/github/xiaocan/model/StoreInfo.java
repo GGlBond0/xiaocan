@@ -144,6 +144,12 @@ public class StoreInfo {
     private String rebateConditionStr;
 
     /**
+     * 歪麦活动键（overbearfoodId, String）。歪麦抢单提交接口用它；监控/抢单共用。
+     * 与 promotionId(Integer, 由 sku.id 转) 可能不同值，故单独存原始串。
+     */
+    private String overbearFoodId;
+
+    /**
      * 带单位距离 setter，与数值 distance(米) 互转同步（与上游一致）。
      * 解析 "500m"/"1.5km" 到 distance(米)。
      */

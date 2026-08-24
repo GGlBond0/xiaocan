@@ -68,6 +68,8 @@ public class WmmtHttp {
     private static String publicKey;
     private static String privateKey;
     private static String h5PublicKey;
+    /** 新版抢单开关（服务端下发）：true=新版 encryptedRequest(RSA+AES)，false=老版 request(LEGACY_AES)。 */
+    private static boolean newSignUpFlag;
 
 
     // ====== 对外暴露的方法 ======
@@ -126,8 +128,9 @@ public class WmmtHttp {
             privateKey = data.getString("privateKey");
             publicKey = data.getString("publicKey");
             h5PublicKey = data.getString("h5PublicKey");
+            newSignUpFlag = Boolean.TRUE.equals(data.getBoolean("newSignUpFlag"));
 
-            log.info("密钥拉取成功");
+            log.info("密钥拉取成功, newSignUpFlag={}", newSignUpFlag);
 
         } catch (BusinessException e) {
             throw e;
@@ -332,6 +335,8 @@ public class WmmtHttp {
 
                 skuStoreinfo.setLeftNumber(sku.getInteger("surplusNumber"));
                 skuStoreinfo.setType(getType(sku.getString("takeawayPlatform")));
+                // 歪麦抢单提交需 overbearfoodId(String)；与 promotionId(sku.id→INT)可能不同值，单独存原始串
+                skuStoreinfo.setOverbearFoodId(sku.getString("overBearFoodId"));
                 //releaseNumber 发布数量
                 if (skuStoreinfo.getStoreTypeEnum() == StoreTypeEnum.WM_MANJIAN) {
                     skuStoreinfo.setPrice(sku.getJSONObject("maxGradeRebate").getBigDecimal("fullMoney"));
@@ -501,6 +506,158 @@ public class WmmtHttp {
     }
 
 
+
+    // ====== 歪麦抢单（报名 signup） ======
+
+    /**
+     * 歪麦外卖霸王餐抢单（报名）。
+     * <p>
+     * 双轨：newSignUpFlag(服务端下发, fetchKeys 时缓存) 为真 → 新版 encryptedRequest(RSA+AES, wmapp-api-v2)；
+     * 为假 → 老版 request(LEGACY_AES, fz-gateway)。两轨 body 字段相同（新版本仅多 orderSourcePage）。
+     *
+     * @param token  歪麦登录 token（wmmt_login_state.token，header）
+     * @param city   城市名（默认长沙市）
+     * @param req    抢单请求体（businessId/overbearfoodId/userId/redIds/省市区...）
+     * @return 抢单结果（code/buyOverbearId/报名费字段/message）
+     */
+    public static WmmtSignUpResult signUp(String token, String city, WmmtSignUpRequest req) {
+        try {
+            checkAndFetchKeys();
+            String c = city != null ? city : "长沙市";
+            Map<String, String> headers = buildCommonHeaders(token, c);
+            headers.put("content-type", "application/json");
+
+            JSONObject bodyObj = new JSONObject();
+            bodyObj.put("businessId", req.getBusinessId());
+            bodyObj.put("overbearfoodId", req.getOverbearfoodId());
+            bodyObj.put("serviceNoStr", req.getServiceNoStr() != null ? req.getServiceNoStr() : "api_overbear_sign_up");
+            bodyObj.put("userId", req.getUserId());
+            bodyObj.put("buyChannel", req.getBuyChannel() != null ? req.getBuyChannel() : "autonomy");
+            bodyObj.put("type", req.getType() != null ? req.getType() : "overbear_one");
+            bodyObj.put("shareRecordId", req.getShareRecordId() != null ? req.getShareRecordId() : "");
+            bodyObj.put("shareLatitude", req.getShareLatitude() != null ? req.getShareLatitude() : "");
+            bodyObj.put("shareLongitude", req.getShareLongitude() != null ? req.getShareLongitude() : "");
+            bodyObj.put("shareUserId", req.getShareUserId() != null ? req.getShareUserId() : "");
+            bodyObj.put("redIds", req.getRedIds() != null ? req.getRedIds() : new ArrayList<>());
+            bodyObj.put("province", req.getProvince() != null ? req.getProvince() : "");
+            bodyObj.put("city", req.getCity() != null ? req.getCity() : "");
+            bodyObj.put("area", req.getArea() != null ? req.getArea() : "");
+
+            if (newSignUpFlag) {
+                // 新版：encryptedRequest(RSA+AES)，走 wmapp-api-v2
+                bodyObj.put("orderSourcePage", req.getOrderSourcePage() != null ? req.getOrderSourcePage() : "");
+                String aesKey = generateRandomString(32);
+                String encryptedBody = aesEncrypt(bodyObj.toJSONString(), aesKey);
+                String encryptKey = rsaEncryptBase64Key(aesKey);
+                headers.put("encrypt-key", encryptKey);
+                final String URL = BASE_URL_V2 + "/order/waimaimt-web-order/overbear/signup";
+                return executeSignUp(URL, encryptedBody, headers, true);
+            }
+            // 老版：request(LEGACY_AES)，走 fz-gateway；body = {"json": AES(data)}
+            JSONObject wrapper = new JSONObject();
+            wrapper.put("json", aesEncrypt(bodyObj.toJSONString(), LEGACY_AES_KEY));
+            final String URL = BASE_URL + "api/v2/overbearfood/api_overbear_sign_up";
+            return executeSignUp(URL, wrapper.toJSONString(), headers, false);
+        } catch (BusinessException e) {
+            throw e;
+        } catch (Exception e) {
+            log.error("歪麦抢单异常", e);
+            throw new BusinessException("歪麦抢单异常: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 执行抢单请求并解密响应为 {@link WmmtSignUpResult}。
+     *
+     * @param reqBody 已按轨加密的请求体
+     * @param headers 含 common headers + 按轨的加密头（新版含 encrypt-key）
+     * @param isNew   新版(RSA+AES)/老版(LEGACY_AES)
+     */
+    private static WmmtSignUpResult executeSignUp(String url, String reqBody, Map<String, String> headers, boolean isNew) {
+        try (HttpResponse response = HttpUtil.createPost(url)
+                .headerMap(headers, true)
+                .timeout(10000)
+                .body(reqBody)
+                .execute()) {
+            if (!response.isOk()) {
+                log.error("歪麦抢单请求失败, 状态码: {}, body: {}", response.getStatus(), response.body());
+                throw new BusinessException("歪麦抢单请求失败: " + response.getStatus());
+            }
+            String resBody = response.body();
+            WmmtSignUpResult result = new WmmtSignUpResult();
+            JSONObject resp;
+            if (isNew) {
+                // 新版：响应带 encrypt-key → RSA 解 AES key → AES 解 body
+                String encryptKey = response.header("encrypt-key");
+                if (encryptKey == null || encryptKey.isEmpty()) {
+                    encryptKey = response.header("Encrypt-Key");
+                }
+                if (encryptKey != null && !encryptKey.isEmpty()) {
+                    resp = JSONObject.parseObject(decryptRes(resBody, encryptKey));
+                } else {
+                    log.warn("歪麦抢单新版响应无 encrypt-key 头, 直接解析 body");
+                    resp = JSONObject.parseObject(resBody);
+                }
+            } else {
+                // 老版：外层 data 字段 LEGACY_AES 解
+                JSONObject outer = JSONObject.parseObject(resBody);
+                String encryptedData = outer == null ? null : outer.getString("data");
+                if (encryptedData != null) {
+                    resp = JSONObject.parseObject(aesDecrypt(encryptedData, LEGACY_AES_KEY));
+                } else {
+                    log.warn("歪麦抢单老版响应无 data 字段, 直接解析 body");
+                    resp = outer;
+                }
+            }
+            if (resp == null) {
+                result.setSuccess(false);
+                result.setMessage("抢单响应为空");
+                return result;
+            }
+            int code = resp.getIntValue("code");
+            result.setCode(code);
+            result.setMessage(resp.getString("message") != null ? resp.getString("message") : resp.getString("msg"));
+            boolean ok;
+            if (isNew) {
+                // 新版成功：code∈{200,0,"0"} 且 data.buyOverbearId 非空
+                ok = (code == 200 || code == 0) && StringUtils.isNotBlank(resp.getString("buyOverbearId"));
+            } else {
+                // 老版成功：code==1；buyOverbearId 在 data 里
+                ok = code == 1;
+            }
+            result.setSuccess(ok);
+            if (ok) {
+                JSONObject data = resp;
+                // 老版 data 已内联(resp=解密后的 data)；新版 buyOverbearId 在根
+                String buyId = resp.getString("buyOverbearId");
+                if (buyId == null && resp.getJSONObject("data") != null) {
+                    buyId = resp.getJSONObject("data").getString("buyOverbearId");
+                }
+                result.setBuyOverbearId(buyId);
+                JSONObject d = resp.getJSONObject("data") != null ? resp.getJSONObject("data") : resp;
+                result.setPayAmount(d.getBigDecimal("payAmount"));
+                result.setOccupyPayAmount(d.getBigDecimal("occupyPayAmount"));
+                result.setSecKillPayAmount(d.getBigDecimal("secKillPayAmount"));
+                boolean needPay = isPositive(result.getPayAmount())
+                        || isPositive(result.getOccupyPayAmount())
+                        || isPositive(result.getSecKillPayAmount());
+                result.setNeedPay(needPay);
+            }
+            log.info("歪麦抢单完成 code={}, success={}, buyOverbearId={}, needPay={}",
+                    code, ok, result.getBuyOverbearId(), result.getNeedPay());
+            return result;
+        } catch (BusinessException e) {
+            throw e;
+        } catch (Exception e) {
+            log.error("歪麦抢单响应处理异常", e);
+            throw new BusinessException("歪麦抢单响应处理异常: " + e.getMessage());
+        }
+    }
+
+    /** 是否正数（>0）。null/0/负 → false。 */
+    private static boolean isPositive(java.math.BigDecimal v) {
+        return v != null && v.compareTo(java.math.BigDecimal.ZERO) > 0;
+    }
 
     public static void main(String[] args) throws Exception {
         checkAndFetchKeys();
