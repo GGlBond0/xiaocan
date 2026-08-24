@@ -28,7 +28,9 @@
 - `fetchStoreInfos` 按 `source` 路由：`1→XiaoChanHttp.searchList`，`2→WmmtServiceImpl.fetchWmStoreInfos(token, null, location, keyword)`（token 按 ids 优先级取首个可用）。
 - `WmmtTask extends BaseTask` 专跑 `source==2`；`MonitorCronScheduler` 按 `source` 分派。
 - 小蚕执行体(`StoreTask`/`MinimumPayService`)的静态兜底 `start()` **必须跳 `source==2`**，否则歪麦配置被小蚕接口重复抓取/写错历史。
-- 歪麦本轮**只通知不抢**：`addUpdateConfig` 对 `source==2` 强制 `autoGrab=false`。
+- **歪麦自动抢单已支持（2026-08-24, task 08-24-wmmt-grab）**：`source==2` 的 `autoGrab` 不再强制 false；
+  `AutoGrabService` 按 source 分支建歪麦 `grab_config`（账号取自 `wmmtLoginStateIds`→`wmmt_login_state`），
+  `GrabService.doGrab` 分派 `WmmtHttp.signUp`。抢单契约见 [[wmmt-grab-contract]]。
 
 ### 门店唯一键 uniq_id（store_pushed_history）
 - `store_pushed_history` 新增 `uniq_id VARCHAR(64)`：歪麦记录 `store_id` 填 `0` 占位（列 NOT NULL），真实门店键存 `uniq_id`。
