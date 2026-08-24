@@ -1,6 +1,7 @@
 package io.github.xiaocan.http;
 
 import cn.hutool.core.util.URLUtil;
+import cn.hutool.http.HttpRequest;
 import cn.hutool.http.HttpResponse;
 import cn.hutool.http.HttpUtil;
 import com.alibaba.fastjson2.JSONArray;
@@ -27,6 +28,7 @@ import java.security.PublicKey;
 import java.security.spec.PKCS8EncodedKeySpec;
 import java.security.spec.X509EncodedKeySpec;
 import java.util.*;
+import java.util.function.Supplier;
 
 /**
  * 歪麦霸王餐（waimaimingtang）小程序接口 HTTP 客户端
@@ -100,12 +102,15 @@ public class WmmtHttp {
         Map<String, String> headers = buildCommonHeaders(token, city);
         headers.put("content-type", "application/json");
         final String CONFIG_URL = BASE_URL + "api/v2/index/newServiceConfig";
-        try (HttpResponse response = HttpUtil.createPost(CONFIG_URL)
+        try (HttpResponse response = executeWithProxy(() -> HttpUtil.createPost(CONFIG_URL)
                 .headerMap(headers, true)
                 .timeout(10000)
-                .body(requestBody)
-                .execute()) {
+                .body(requestBody), "fetchKeys", "wmmt")) {
 
+            if (response == null) {
+                log.error("拉取密钥失败: 请求经代理全部失败");
+                throw new BusinessException("拉取密钥失败: 请求经代理全部失败");
+            }
             String resBody = response.body();
             log.info("newServiceConfig 状态码: {}, 响应: {}", response.getStatus(), resBody);
 
@@ -223,12 +228,15 @@ public class WmmtHttp {
      */
     private static WmPageVO executeShopListRequest(String encryptedBody, Map<String, String> headers) {
         final String SHOP_LIST_URL = BASE_URL_V2 + "/bwc/waimaimt-web-bwc/shopIndex/getShopList";
-        try (HttpResponse response = HttpUtil.createPost(SHOP_LIST_URL)
+        try (HttpResponse response = executeWithProxy(() -> HttpUtil.createPost(SHOP_LIST_URL)
                 .headerMap(headers, true)
                 .timeout(10000)
-                .body(encryptedBody)
-                .execute()) {
+                .body(encryptedBody), "getShopList", "wmmt")) {
 
+            if (response == null) {
+                log.error("getShopList 请求失败: 请求经代理全部失败");
+                throw new BusinessException("getShopList 请求失败: 请求经代理全部失败");
+            }
             if (!response.isOk()) {
                 log.error("getShopList 请求失败, 状态码: {}, body: {}", response.getStatus(), response.body());
                 throw new BusinessException("请求失败: " + response.getStatus());
@@ -263,6 +271,54 @@ public class WmmtHttp {
     }
 
     // ====== 内部工具方法 ======
+
+    /**
+     * 经代理执行上游 HTTP 请求；代理未启用则直连。
+     * <p>
+     * 生产直连歪麦被阿里云高防 TLS 层拦截（2026-08-25 实测，出口 IP 121.91.175.192），
+     * 必须走 ProxyHolder 代理池（携趣）绕过；本地不启用代理时直连保持可用。
+     * <p>
+     * 遇 403 或网络异常（SocketTimeout/Connection reset 等）仅失效当前代理并换代理重试，
+     * 最多 {@link ProxyHolder#retry()} 次；全部失败返回 null 由调用方处理。
+     *
+     * @param reqFn      返回待执行的 HttpRequest
+     * @param tag        日志标识（方法名）
+     * @param accountKey 账号缓存 key（wmmt 独立）
+     */
+    private static HttpResponse executeWithProxy(Supplier<HttpRequest> reqFn, String tag, String accountKey) {
+        if (!ProxyHolder.enabled()) {
+            return reqFn.get().execute();
+        }
+        String key = ProxyHolder.normalizeKey(accountKey);
+        int retry = ProxyHolder.retry();
+        for (int i = 0; i < retry; i++) {
+            ProxySpec spec = ProxyHolder.getProxy(key, i > 0);
+            if (spec == null) {
+                throw new BusinessException("代理不可用，无法请求歪麦网关");
+            }
+            HttpRequest req = reqFn.get();
+            HttpResponse response;
+            try {
+                ProxyHolder.attach(req, spec);
+                response = req.execute();
+            } catch (Exception e) {
+                // SocketTimeoutException / Connection reset 等网络异常：仅失效本 key 代理并换代理重试
+                log.warn("{} key={} 经代理 {}:{} 请求异常，换代理重试({}/{}): {}",
+                        tag, key, spec.getHost(), spec.getPort(), i + 1, retry, e.getMessage());
+                ProxyHolder.invalidate(key);
+                continue;
+            }
+            if (response.getStatus() == 403) {
+                log.warn("{} key={} 经代理 {}:{} 返回 403，换代理重试({}/{})",
+                        tag, key, spec.getHost(), spec.getPort(), i + 1, retry);
+                response.close();
+                ProxyHolder.invalidate(key);
+                continue;
+            }
+            return response;
+        }
+        return null;
+    }
 
     /**
      * 构建通用请求头（nonce/timestamp/sign 等）
@@ -574,11 +630,14 @@ public class WmmtHttp {
      * @param isNew   新版(RSA+AES)/老版(LEGACY_AES)
      */
     private static WmmtSignUpResult executeSignUp(String url, String reqBody, Map<String, String> headers, boolean isNew) {
-        try (HttpResponse response = HttpUtil.createPost(url)
+        try (HttpResponse response = executeWithProxy(() -> HttpUtil.createPost(url)
                 .headerMap(headers, true)
                 .timeout(10000)
-                .body(reqBody)
-                .execute()) {
+                .body(reqBody), "wmmtSignUp", "wmmt")) {
+            if (response == null) {
+                log.error("歪麦抢单请求失败: 请求经代理全部失败");
+                throw new BusinessException("歪麦抢单请求失败: 请求经代理全部失败");
+            }
             if (!response.isOk()) {
                 log.error("歪麦抢单请求失败, 状态码: {}, body: {}", response.getStatus(), response.body());
                 throw new BusinessException("歪麦抢单请求失败: " + response.getStatus());
