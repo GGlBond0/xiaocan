@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 38
+- **Total Sessions**: 39
 - **Last Active**: 2026-08-24
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~1319 | Active |
+| `journal-1.md` | ~1393 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 39 | 2026-08-24 | 歪麦抢单落地 | `50c7230`, `43845e9` | `main` |
 | 38 | 2026-08-24 | 生产部署: 后端精简JAR重建部署 + 前端新版dist上生产 + 生产库三表清理 | `63ce83a` | `main` |
 | 37 | 2026-08-24 | 前端同步删改: 移除收藏/门店搜索/库存历史页面与入口, 保留歪麦 | `986997c` | `feat/upstream-modules` |
 | 36 | 2026-08-24 | 精简上游模块: 删除收藏/库存/消息/美团赏金/聚合搜索, 保留歪麦数据层 | `2a2f4fe` | `feat/upstream-modules` |

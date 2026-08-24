@@ -1357,3 +1357,37 @@ Trellis任务08-24-trim-upstream-modules: 从分支feat/upstream-modules移除fa
 
 - **生产部署待办**(等歪麦抢单完成后): DDL×2 → 后端JAR → 前端dist → 冒烟,见记忆 wmmt-monitor-prod-pending
 - 下一步: 歪麦抢单(overbearfood 提交接口逆向, WmmtHttp 扩展)
+
+
+## Session 39: 歪麦抢单落地
+
+**Date**: 2026-08-24
+**Task**: 歪麦抢单落地
+**Branch**: `main`
+
+### Summary
+
+从反编译小程序源码逆向歪麦抢单正向提交接口(双轨signup),复用现有抢单管线实现自动抢单:数据层补userId/歪麦活动键/门店id列,AutoGrabService按source分支,GrabService.doGrab分派WmmtHttp.signUp,addUpdateConfig放开歪麦autoGrab;前端登录态加userId录入+监控页放开自动抢。已生产部署(DDL+JAR+dist)冒烟通过。真实signup行为待用户在有可抢活动时验证。
+
+### Main Changes
+
+- Detailed change bullets were not supplied; see the summary above.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `50c7230` | (see git log) |
+| `43845e9` | (see git log) |
+
+### Testing
+
+- Validation was not recorded for this session.
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
