@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 36
+- **Total Sessions**: 37
 - **Last Active**: 2026-08-24
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~1253 | Active |
+| `journal-1.md` | ~1286 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 37 | 2026-08-24 | 前端同步删改: 移除收藏/门店搜索/库存历史页面与入口, 保留歪麦 | `986997c` | `feat/upstream-modules` |
 | 36 | 2026-08-24 | 精简上游模块: 删除收藏/库存/消息/美团赏金/聚合搜索, 保留歪麦数据层 | `2a2f4fe` | `feat/upstream-modules` |
 | 35 | 2026-08-24 | 携趣代理多池轮换实现部署+提前实测收尾 | `ee816f7`, `cf07642`, `d85d8e8` | `feat/upstream-modules` |
 | 34 | 2026-08-21 | 前端部署上线到生产+生产验证新菜单 | `08cb260`, `8917ecb` | `feat/upstream-modules` |

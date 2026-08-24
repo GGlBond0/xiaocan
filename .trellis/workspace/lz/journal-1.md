@@ -1251,3 +1251,36 @@ Trellis任务08-24-trim-upstream-modules: 从分支feat/upstream-modules移除fa
 ### Next Steps
 
 - None - task complete
+
+
+## Session 37: 前端同步删改: 移除收藏/门店搜索/库存历史页面与入口, 保留歪麦
+
+**Date**: 2026-08-24
+**Task**: 前端同步删改: 移除收藏/门店搜索/库存历史页面与入口, 保留歪麦
+**Branch**: `feat/upstream-modules`
+
+### Summary
+
+延续后端trim, 前端xiaocan-front-main同步删除FavoriteStoreView/StoreSearchView/StoreInventoryHistoryView三页面+router三路由+NavBar两入口, WmmtView移除收藏功能(后端收藏已删)保留歪麦列表. npm run build通过, 前端main分支commit 986997c.
+
+### Main Changes
+
+- Detailed change bullets were not supplied; see the summary above.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `986997c` | (see git log) |
+
+### Testing
+
+- Validation was not recorded for this session.
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
