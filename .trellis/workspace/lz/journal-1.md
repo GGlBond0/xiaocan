@@ -1317,3 +1317,43 @@ Trellis任务08-24-trim-upstream-modules: 从分支feat/upstream-modules移除fa
 ### Next Steps
 
 - None - task complete
+
+## Session 39: 歪麦监控通知开发完成(未部署) + 生产建表/凭据手尾
+
+**Date**: 2026-08-24
+**Task**: 08-24-prod-wmmt-login-state-ddl + 08-24-wmmt-monitor-notify
+**Branch**: `main`
+
+### Summary
+
+①生产补建 wmmt_login_state 表(DDL已执行,接口200;发现生产MySQL root密码失效,改用xiaocan用户+env密码) ②歪麦监控通知完整开发:monitor_config加source(1小蚕/2歪麦)+wmmt_login_state_id(s)绑定、store_pushed_history加uniq_id、新增WmmtTask extends BaseTask专跑歪麦、MinimumPayService/StoreTask兜底跳source=2、调度分派、歪麦STORE_ACTIVITY当天去重、本轮只通知不抢(autoGrab强制false)。前后端编译/构建通过,双端独立审查子代理发现并修复H1-H3等真bug。代码已commit**未部署**,待歪麦抢单完成后一并上线。
+
+### Main Changes
+
+- DDL: monitor_config 加 source/wmmt_login_state_id(s)+store_pushed_history 加 uniq_id;生产仅建了 wmmt_login_state 表
+- 后端: WmmtTask(新增)+MonitorConfigEntity/DTO/VO+WmmtService/LoginStateService 重载+调度分派+静态兜底防护
+- 前端: MonitorConfigView 数据源下拉+歪麦账号多选+autoGrab禁用
+- 记忆: prod-mysql-credentials 新记;wmmt-monitor-notify 新记;wmmt-monitor-prod-pending 待办交接
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `ace179c` | chore(task): archive 08-24-wmmt-monitor-notify |
+| `ecf8cdd` | docs(spec): wmmt 数据源契约 |
+| `2e8a2e2` | feat(wmmt): 歪麦监控通知 |
+| (frontend `6019a93`) | feat(wmmt): 监控配置页加歪麦数据源下拉 |
+
+### Testing
+
+- 后端 `mvn -o clean compile` 通过; 前端 `npm run build`(含 vue-tsc) 通过
+- 双端独立审查子代理 + 手动核查修复高严重问题
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- **生产部署待办**(等歪麦抢单完成后): DDL×2 → 后端JAR → 前端dist → 冒烟,见记忆 wmmt-monitor-prod-pending
+- 下一步: 歪麦抢单(overbearfood 提交接口逆向, WmmtHttp 扩展)
