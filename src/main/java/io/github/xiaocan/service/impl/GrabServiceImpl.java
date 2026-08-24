@@ -366,8 +366,8 @@ public class GrabServiceImpl extends ServiceImpl<GrabConfigMapper, GrabConfigEnt
             return result;
         }
         String token = account.getToken();
-        Integer wmmtUserId = account.getWmmtUserId();
-        if (!StringUtils.hasText(token) || wmmtUserId == null) {
+        String wmmtUserId = account.getWmmtUserId();
+        if (!StringUtils.hasText(token) || !StringUtils.hasText(wmmtUserId)) {
             // 缺 userId：请求体必需的字段，缺失无法抢
             String msg = !StringUtils.hasText(token) ? "歪麦账号缺 token" : "歪麦账号缺 userId，需在微信端补录后才能自动抢";
             log.warn("歪麦抢单跳过(缺账号信息): configId={}, accountId={}, {}", config.getId(), wmmtAccountId, msg);

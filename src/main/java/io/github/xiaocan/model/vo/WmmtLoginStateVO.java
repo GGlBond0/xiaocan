@@ -19,9 +19,9 @@ public class WmmtLoginStateVO {
      */
     private String maskedToken;
     /**
-     * 歪麦用户id（数字）
+     * 歪麦用户id（字符串，登录返回 data.userId）
      */
-    private Integer wmmtUserId;
+    private String wmmtUserId;
     /**
      * 城市
      */

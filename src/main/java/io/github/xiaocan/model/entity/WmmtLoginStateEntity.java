@@ -31,9 +31,9 @@ public class WmmtLoginStateEntity {
      */
     private String token;
     /**
-     * 歪麦用户id（数字，登录返回 data.userId，抢单请求体必填 ≠ token）
+     * 歪麦用户id（字符串，登录返回 data.userId 如 "20221004140718-e247445360_user"，抢单请求体必填 ≠ token）
      */
-    private Integer wmmtUserId;
+    private String wmmtUserId;
     /**
      * 城市（默认长沙市，歪麦当前固定）
      */

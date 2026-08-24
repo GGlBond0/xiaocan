@@ -18,9 +18,9 @@ public class WmmtLoginStateDTO {
     @NotBlank(message = "歪麦 token 不能为空")
     private String token;
     /**
-     * 歪麦用户id（数字，登录返回 data.userId；抢单请求体必填。可空=仅浏览/监控，可抢需填）
+     * 歪麦用户id（字符串，登录返回 data.userId 如 "2022..._user"；抢单请求体必填。可空=仅浏览/监控，可抢需填）
      */
-    private Integer wmmtUserId;
+    private String wmmtUserId;
     /**
      * 城市（可空，默认长沙市）
      */

@@ -431,7 +431,7 @@ CREATE TABLE IF NOT EXISTS `wmmt_login_state` (
   `user_id` INT NOT NULL COMMENT '系统用户id',
   `name` VARCHAR(100) DEFAULT NULL COMMENT '别名',
   `token` VARCHAR(255) NOT NULL COMMENT '歪麦token',
-  `wmmt_user_id` INT DEFAULT NULL COMMENT '歪麦用户id(数字, 登录返回data.userId, 抢单请求体必填)',
+  `wmmt_user_id` VARCHAR(64) DEFAULT NULL COMMENT '歪麦用户id(字符串, 登录返回data.userId如 2022..._user, 抢单请求体必填)',
   `city` VARCHAR(50) DEFAULT '长沙市' COMMENT '城市',
   `create_time` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   `update_time` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
@@ -470,7 +470,7 @@ ALTER TABLE `store_pushed_history`
 -- 生产只执行本段。禁止整文件导入本 ddl.sql（前半含 DROP TABLE IF EXISTS）。
 -- ============================
 ALTER TABLE `wmmt_login_state`
-  ADD COLUMN `wmmt_user_id` INT DEFAULT NULL COMMENT '歪麦用户id(数字)';
+  ADD COLUMN `wmmt_user_id` VARCHAR(64) DEFAULT NULL COMMENT '歪麦用户id(字符串, 登录返回data.userId)';
 
 ALTER TABLE `grab_config`
   ADD COLUMN `source` INT NOT NULL DEFAULT 1 COMMENT '抢单数据源 1小蚕 2歪麦',

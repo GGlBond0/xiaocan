@@ -17,7 +17,7 @@ import java.util.List;
  * 字段来源：
  *  - businessId      ← 门店详情参数 ops.id
  *  - overbearfoodId  ← 门店列表/详情活动项 overBearFoodId（String）
- *  - userId          ← 登录返回 data.userId（数字，≠ token；wmmt_login_state.wmmt_user_id）
+ *  - userId          ← 登录返回 data.userId（字符串，≠ token；wmmt_login_state.wmmt_user_id）
  *  - redIds          ← 选中红包 id 数组（maxUserRedPackage.id 等），无则空数组
  *  - province/city/area ← 地址 addres.prov/city/area
  */
@@ -30,8 +30,8 @@ public class WmmtSignUpRequest {
     private String overbearfoodId;
     /** 服务名枚举 */
     private String serviceNoStr;
-    /** 歪麦用户id（数字） */
-    private Integer userId;
+    /** 歪麦用户id（字符串，登录返回 data.userId 如 "2022..._user"） */
+    private String userId;
     /** 购买渠道，固定 "autonomy" */
     private String buyChannel;
     /** application，固定 "overbear_one" */
