@@ -97,3 +97,23 @@
 - ✅ **前端已接入**（2026-08-21，xiaocan-front-main）：新增 收藏/门店搜索/歪麦/库存历史 4 页面 + NavBar 菜单 + 4 路由 + echarts 依赖（前端 commit 08cb260）。库存历史页移植上游；收藏/门店搜索/歪麦基于后端契约新设计，各页面地址下拉取经纬度/cityCode/locationId。`npm run build`(vue-tsc) 通过，browser-relay+视觉验证 4 页渲染正常。
 - ⏳ **BaseTask 写 batchId** 未做（主权区延期项）；iframe / 消息批量需其写入才有完整数据。
 - ⚠️ 歪麦 `WmmtHttp` 抓取走直连（上游如此）：生产实测 `/api/wmmt/shopList` 报"拉取密钥异常: SocketTimeoutException: Read timed out"，歪麦上游服务器不稳定/慢，非应用缺陷。
+
+---
+
+## 2026-08-24 追加：歪麦登录态多账号池（task `08-24-wmmt-login-state-entry`）
+
+歪麦门店浏览**无需账号**（未登录可看门店，`WmmtHttp.getShopList` 传空 token 可跑，对齐小蚕门店浏览无 auth）。因此歪麦登录态池是**纯账号库**，供未来的歪麦监控/抢单引用，**不改任何门店查询逻辑**。
+
+### 关键决策
+- **独立表 `wmmt_login_state`**：不复用小蚕 `login_state` 池（歪麦 token 无 X-Sivir/JWT，硬塞会破坏小蚕池解析契约）。字段 `user_id/name/token/city`(默认长沙市)/`create_time/update_time/deleted`，每系统用户多组。
+- **不标默认账号**：未来歪麦抢单/监控配置引用 `wmmt_login_state.id`（类比小蚕 `grab_config.login_state_id`），本轮不预支"当前激活"状态。
+- **不改门店查询**：`WmmtService/WmmtHttp/UserEntity.waimaiToken` 均不动（AC7 门槛）。
+
+### 新增接口（`/api/wmmt-login-state`）
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| POST | `/api/wmmt-login-state` | 新增账号，body `{ name?, token, city? }`，token 必填，name 空默认"账号N" |
+| GET | `/api/wmmt-login-state/list` | 当前用户账号列表，token 掩码（前4+****+后4，不足 8 显 ****） |
+| DELETE | `/api/wmmt-login-state/{id}` | 删除当前用户账号（归属校验） |
+
+表 DDL 见根 `ddl.sql` 末尾段（生产只执行该段，勿整跑）。前端 `WmmtLoginView.vue`（`/wmmt-login`，NavBar「歪麦登录态」），城市固定"长沙市"只读。

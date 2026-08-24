@@ -421,3 +421,21 @@ ALTER TABLE `user`
 -- 三表与 store_pushed_history.batch_id 列）已随精简任务删除（2026-08-24 trim-upstream-modules）。
 -- 生产库如需回滚删除段，保留历史 commit 可查，但当前业务不再使用。
 
+-- ============================
+-- 2026-08-24 歪麦登录态多账号池（task 08-24-wmmt-login-state-entry）
+-- 歪麦门店浏览无需账号；本表为歪麦抢单/监控预留的账号池，一个系统用户可多行。
+-- 生产只执行本段。禁止整文件导入本 ddl.sql（前半含 DROP TABLE IF EXISTS）。
+-- ============================
+CREATE TABLE IF NOT EXISTS `wmmt_login_state` (
+  `id` INT NOT NULL AUTO_INCREMENT COMMENT '主键',
+  `user_id` INT NOT NULL COMMENT '系统用户id',
+  `name` VARCHAR(100) DEFAULT NULL COMMENT '别名',
+  `token` VARCHAR(255) NOT NULL COMMENT '歪麦token',
+  `city` VARCHAR(50) DEFAULT '长沙市' COMMENT '城市',
+  `create_time` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `update_time` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  `deleted` TINYINT(1) DEFAULT 0 COMMENT '逻辑删除 0否 1是',
+  PRIMARY KEY (`id`),
+  KEY `idx_user_id` (`user_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='歪麦登录态池';
+
